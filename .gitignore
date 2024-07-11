@@ -28,3 +28,6 @@ output/*
 # Vscode files
 .vscode
 
+# Go workspace file
+go.work
+go.work.sum
