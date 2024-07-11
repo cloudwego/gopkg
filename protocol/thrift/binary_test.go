@@ -23,7 +23,6 @@ import (
 )
 
 func TestBinary(t *testing.T) {
-
 	{ // Bool
 		sz := 2 * Binary.BoolLength()
 
