@@ -18,6 +18,7 @@ package thrift
 
 import (
 	"errors"
+	"io"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -45,6 +46,12 @@ func TestApplicationException(t *testing.T) {
 	assert.Equal(t, "unknown exception type [999]", ex4.Error())
 
 	t.Log(ex4.String()) // ...
+}
+
+func TestProtocolException(t *testing.T) {
+	e := NewProtocolExceptionWithErr(io.EOF)
+	assert.ErrorIs(t, e, io.EOF) // will call errors.Is
+	assert.True(t, e.Is(NewProtocolException(UNKNOWN_PROTOCOL_EXCEPTION, "EOF")))
 }
 
 type testTException struct{}

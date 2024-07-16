@@ -14,33 +14,17 @@
  * limitations under the License.
  */
 
-package unsafe
+package unsafe2
 
-import "unsafe"
+import (
+	"testing"
 
-type sliceHeader struct {
-	Data uintptr
-	Len  int
-	Cap  int
-}
+	"github.com/stretchr/testify/assert"
+)
 
-type strHeader struct {
-	Data uintptr
-	Len  int
-}
-
-// ByteSliceToString converts []byte to string without copy
-func ByteSliceToString(b []byte) string {
-	return *(*string)(unsafe.Pointer(&b))
-}
-
-// StringToByteSlice converts string to []byte without copy
-func StringToByteSlice(s string) []byte {
-	var v []byte
-	p0 := (*sliceHeader)(unsafe.Pointer(&v))
-	p1 := (*strHeader)(unsafe.Pointer(&s))
-	p0.Data = p1.Data
-	p0.Len = p1.Len
-	p0.Cap = p1.Len
-	return v
+func TestUnsafe(t *testing.T) {
+	s := "hello"
+	b := []byte("hello")
+	assert.Equal(t, s, ByteSliceToString(b))
+	assert.Equal(t, b, StringToByteSlice(s))
 }
