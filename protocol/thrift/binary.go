@@ -378,9 +378,7 @@ func (BinaryProtocol) ReadDouble(buf []byte) (v float64, l int, err error) {
 	return math.Float64frombits(binary.BigEndian.Uint64(buf)), 8, nil
 }
 
-var (
-	errDepthLimitExceeded = NewProtocolException(DEPTH_LIMIT, "depth limit exceeded")
-)
+var errDepthLimitExceeded = NewProtocolException(DEPTH_LIMIT, "depth limit exceeded")
 
 var typeToSize = [256]int8{
 	BOOL:   1,

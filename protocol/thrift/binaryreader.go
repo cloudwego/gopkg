@@ -354,6 +354,9 @@ func (r *BinaryReader) skipType(t TType, maxdepth int) error {
 	case STRUCT:
 		for {
 			ft, _, err := r.ReadFieldBegin()
+			if err != nil {
+				return err
+			}
 			if ft == STOP {
 				return nil
 			}

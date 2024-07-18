@@ -257,5 +257,4 @@ func TestBinaryReaderSkip(t *testing.T) {
 		err = r.Skip(TType(122))
 		require.Error(t, err)
 	}
-
 }
