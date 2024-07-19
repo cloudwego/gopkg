@@ -30,6 +30,14 @@ func p2i32(p unsafe.Pointer) int32 {
 		uint32(*(*byte)(p))<<24)
 }
 
+type nextIface interface {
+	Next(n int) ([]byte, error)
+}
+
+type discardIface interface {
+	Discard(n int) (int, error)
+}
+
 // nextReader provides a wrapper for io.Reader to use BinaryReader
 type nextReader struct {
 	r io.Reader
@@ -41,6 +49,18 @@ var poolNextReader = sync.Pool{
 		return &nextReader{}
 	},
 }
+
+func newNextReader(r io.Reader) *nextReader {
+	ret := poolNextReader.Get().(*nextReader)
+	ret.Reset(r)
+	return ret
+}
+
+// Release ...
+func (r *nextReader) Release() { poolNextReader.Put(r) }
+
+// Reset ... for reusing nextReader
+func (r *nextReader) Reset(rd io.Reader) { r.r = rd }
 
 // Next implements nextIface of BinaryReader
 func (r *nextReader) Next(n int) ([]byte, error) {
@@ -73,9 +93,4 @@ func (r *nextReader) Discard(n int) (int, error) {
 		n -= readn
 	}
 	return ret, nil
-}
-
-// Reset ... for reusing nextReader
-func (r *nextReader) Reset(rd io.Reader) {
-	r.r = rd
 }

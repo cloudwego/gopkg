@@ -24,14 +24,6 @@ import (
 	"sync"
 )
 
-type nextIface interface {
-	Next(n int) ([]byte, error)
-}
-
-type discardIface interface {
-	Discard(n int) (int, error)
-}
-
 // BinaryReader represents a reader for binary protocol
 type BinaryReader struct {
 	r nextIface
@@ -53,8 +45,7 @@ func NewBinaryReader(r io.Reader) *BinaryReader {
 	if nextr, ok := r.(nextIface); ok {
 		ret.r = nextr
 	} else {
-		nextr := poolNextReader.Get().(*nextReader)
-		nextr.Reset(r)
+		nextr := newNextReader(r)
 		ret.r = nextr
 		ret.d = nextr
 	}
@@ -65,7 +56,7 @@ func NewBinaryReader(r io.Reader) *BinaryReader {
 func (r *BinaryReader) Release() {
 	nextr, ok := r.r.(*nextReader)
 	if ok {
-		poolNextReader.Put(nextr)
+		nextr.Release()
 	}
 	r.reset()
 	poolBinaryReader.Put(r)
