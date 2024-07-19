@@ -20,15 +20,16 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
+	"unsafe"
 
-	"github.com/cloudwego/gopkg/internal/unsafe"
+	"github.com/cloudwego/gopkg/internal/hack"
 )
 
-var Binary binaryProtocol
+var Binary BinaryProtocol
 
-type binaryProtocol struct{}
+type BinaryProtocol struct{}
 
-func (binaryProtocol) WriteMessageBegin(buf []byte, name string, typeID TMessageType, seq int32) int {
+func (BinaryProtocol) WriteMessageBegin(buf []byte, name string, typeID TMessageType, seq int32) int {
 	binary.BigEndian.PutUint32(buf, uint32(msgVersion1)|uint32(typeID&msgTypeMask))
 	binary.BigEndian.PutUint32(buf[4:], uint32(len(name)))
 	off := 8 + copy(buf[8:], name)
@@ -36,37 +37,37 @@ func (binaryProtocol) WriteMessageBegin(buf []byte, name string, typeID TMessage
 	return off + 4
 }
 
-func (binaryProtocol) WriteFieldBegin(buf []byte, typeID TType, id int16) int {
+func (BinaryProtocol) WriteFieldBegin(buf []byte, typeID TType, id int16) int {
 	buf[0] = byte(typeID)
 	binary.BigEndian.PutUint16(buf[1:], uint16(id))
 	return 3
 }
 
-func (binaryProtocol) WriteFieldStop(buf []byte) int {
+func (BinaryProtocol) WriteFieldStop(buf []byte) int {
 	buf[0] = byte(STOP)
 	return 1
 }
 
-func (binaryProtocol) WriteMapBegin(buf []byte, kt, vt TType, size int) int {
+func (BinaryProtocol) WriteMapBegin(buf []byte, kt, vt TType, size int) int {
 	buf[0] = byte(kt)
 	buf[1] = byte(vt)
 	binary.BigEndian.PutUint32(buf[2:], uint32(size))
 	return 6
 }
 
-func (binaryProtocol) WriteListBegin(buf []byte, et TType, size int) int {
+func (BinaryProtocol) WriteListBegin(buf []byte, et TType, size int) int {
 	buf[0] = byte(et)
 	binary.BigEndian.PutUint32(buf[1:], uint32(size))
 	return 5
 }
 
-func (binaryProtocol) WriteSetBegin(buf []byte, et TType, size int) int {
+func (BinaryProtocol) WriteSetBegin(buf []byte, et TType, size int) int {
 	buf[0] = byte(et)
 	binary.BigEndian.PutUint32(buf[1:], uint32(size))
 	return 5
 }
 
-func (binaryProtocol) WriteBool(buf []byte, v bool) int {
+func (BinaryProtocol) WriteBool(buf []byte, v bool) int {
 	if v {
 		buf[0] = 1
 	} else {
@@ -75,91 +76,91 @@ func (binaryProtocol) WriteBool(buf []byte, v bool) int {
 	return 1
 }
 
-func (binaryProtocol) WriteByte(buf []byte, v int8) int {
+func (BinaryProtocol) WriteByte(buf []byte, v int8) int {
 	buf[0] = byte(v)
 	return 1
 }
 
-func (binaryProtocol) WriteI16(buf []byte, v int16) int {
+func (BinaryProtocol) WriteI16(buf []byte, v int16) int {
 	binary.BigEndian.PutUint16(buf, uint16(v))
 	return 2
 }
 
-func (binaryProtocol) WriteI32(buf []byte, v int32) int {
+func (BinaryProtocol) WriteI32(buf []byte, v int32) int {
 	binary.BigEndian.PutUint32(buf, uint32(v))
 	return 4
 }
 
-func (binaryProtocol) WriteI64(buf []byte, v int64) int {
+func (BinaryProtocol) WriteI64(buf []byte, v int64) int {
 	binary.BigEndian.PutUint64(buf, uint64(v))
 	return 8
 }
 
-func (binaryProtocol) WriteDouble(buf []byte, v float64) int {
+func (BinaryProtocol) WriteDouble(buf []byte, v float64) int {
 	binary.BigEndian.PutUint64(buf, math.Float64bits(v))
 	return 8
 }
 
-func (binaryProtocol) WriteBinary(buf, v []byte) int {
+func (BinaryProtocol) WriteBinary(buf, v []byte) int {
 	binary.BigEndian.PutUint32(buf, uint32(len(v)))
 	return 4 + copy(buf[4:], v)
 }
 
-func (binaryProtocol) WriteBinaryNocopy(buf []byte, w NocopyWriter, v []byte) int {
+func (p BinaryProtocol) WriteBinaryNocopy(buf []byte, w NocopyWriter, v []byte) int {
 	if w == nil || len(buf) < NocopyWriteThreshold {
-		return Binary.WriteBinary(buf, v)
+		return p.WriteBinary(buf, v)
 	}
 	binary.BigEndian.PutUint32(buf, uint32(len(v)))
 	_ = w.WriteDirect(v, len(buf[4:])) // always err == nil ?
 	return 4
 }
 
-func (binaryProtocol) WriteString(buf []byte, v string) int {
+func (BinaryProtocol) WriteString(buf []byte, v string) int {
 	binary.BigEndian.PutUint32(buf, uint32(len(v)))
 	return 4 + copy(buf[4:], v)
 }
 
-func (binaryProtocol) WriteStringNocopy(buf []byte, w NocopyWriter, v string) int {
-	return Binary.WriteBinaryNocopy(buf, w, unsafe.StringToByteSlice(v))
+func (p BinaryProtocol) WriteStringNocopy(buf []byte, w NocopyWriter, v string) int {
+	return p.WriteBinaryNocopy(buf, w, hack.StringToByteSlice(v))
 }
 
 // Append methods
 
-func (binaryProtocol) AppendMessageBegin(buf []byte, name string, typeID TMessageType, seq int32) []byte {
+func (p BinaryProtocol) AppendMessageBegin(buf []byte, name string, typeID TMessageType, seq int32) []byte {
 	buf = appendUint32(buf, uint32(msgVersion1)|uint32(typeID&msgTypeMask))
-	buf = Binary.AppendString(buf, name)
-	return Binary.AppendI32(buf, seq)
+	buf = p.AppendString(buf, name)
+	return p.AppendI32(buf, seq)
 }
 
-func (binaryProtocol) AppendFieldBegin(buf []byte, typeID TType, id int16) []byte {
+func (BinaryProtocol) AppendFieldBegin(buf []byte, typeID TType, id int16) []byte {
 	return append(buf, byte(typeID), byte(uint16(id>>8)), byte(id))
 }
 
-func (binaryProtocol) AppendFieldStop(buf []byte) []byte {
+func (BinaryProtocol) AppendFieldStop(buf []byte) []byte {
 	return append(buf, byte(STOP))
 }
 
-func (binaryProtocol) AppendMapBegin(buf []byte, kt, vt TType, size int) []byte {
-	return Binary.AppendI32(append(buf, byte(kt), byte(vt)), int32(size))
+func (p BinaryProtocol) AppendMapBegin(buf []byte, kt, vt TType, size int) []byte {
+	return p.AppendI32(append(buf, byte(kt), byte(vt)), int32(size))
 }
 
-func (binaryProtocol) AppendListBegin(buf []byte, et TType, size int) []byte {
-	return Binary.AppendI32(append(buf, byte(et)), int32(size))
+func (p BinaryProtocol) AppendListBegin(buf []byte, et TType, size int) []byte {
+	return p.AppendI32(append(buf, byte(et)), int32(size))
 }
 
-func (binaryProtocol) AppendSetBegin(buf []byte, et TType, size int) []byte {
-	return Binary.AppendI32(append(buf, byte(et)), int32(size))
+func (p BinaryProtocol) AppendSetBegin(buf []byte, et TType, size int) []byte {
+	return p.AppendI32(append(buf, byte(et)), int32(size))
 }
 
-func (binaryProtocol) AppendBinary(buf, v []byte) []byte {
-	return append(Binary.AppendI32(buf, int32(len(v))), v...)
+func (p BinaryProtocol) AppendBinary(buf, v []byte) []byte {
+	return append(p.AppendI32(buf, int32(len(v))), v...)
 }
 
-func (binaryProtocol) AppendString(buf []byte, v string) []byte {
-	return append(Binary.AppendI32(buf, int32(len(v))), v...)
+func (p BinaryProtocol) AppendString(buf []byte, v string) []byte {
+	return append(p.AppendI32(buf, int32(len(v))), v...)
 }
 
-func (binaryProtocol) AppendBool(buf []byte, v bool) []byte {
+func (BinaryProtocol) AppendBool(buf []byte, v bool) []byte {
 	if v {
 		return append(buf, 1)
 	} else {
@@ -167,23 +168,23 @@ func (binaryProtocol) AppendBool(buf []byte, v bool) []byte {
 	}
 }
 
-func (binaryProtocol) AppendByte(buf []byte, v int8) []byte {
+func (BinaryProtocol) AppendByte(buf []byte, v int8) []byte {
 	return append(buf, byte(v))
 }
 
-func (binaryProtocol) AppendI16(buf []byte, v int16) []byte {
+func (BinaryProtocol) AppendI16(buf []byte, v int16) []byte {
 	return append(buf, byte(uint16(v)>>8), byte(v))
 }
 
-func (binaryProtocol) AppendI32(buf []byte, v int32) []byte {
+func (BinaryProtocol) AppendI32(buf []byte, v int32) []byte {
 	return appendUint32(buf, uint32(v))
 }
 
-func (binaryProtocol) AppendI64(buf []byte, v int64) []byte {
+func (BinaryProtocol) AppendI64(buf []byte, v int64) []byte {
 	return appendUint64(buf, uint64(v))
 }
 
-func (binaryProtocol) AppendDouble(buf []byte, v float64) []byte {
+func (BinaryProtocol) AppendDouble(buf []byte, v float64) []byte {
 	return appendUint64(buf, math.Float64bits(v))
 }
 
@@ -198,25 +199,25 @@ func appendUint64(buf []byte, v uint64) []byte {
 
 // Length methods
 
-func (binaryProtocol) MessageBeginLength(name string, _ TMessageType, _ int32) int {
+func (BinaryProtocol) MessageBeginLength(name string, _ TMessageType, _ int32) int {
 	return 4 + (4 + len(name)) + 4
 }
 
-func (binaryProtocol) FieldBeginLength() int           { return 3 }
-func (binaryProtocol) FieldStopLength() int            { return 1 }
-func (binaryProtocol) MapBeginLength() int             { return 6 }
-func (binaryProtocol) ListBeginLength() int            { return 5 }
-func (binaryProtocol) SetBeginLength() int             { return 5 }
-func (binaryProtocol) BoolLength() int                 { return 1 }
-func (binaryProtocol) ByteLength() int                 { return 1 }
-func (binaryProtocol) I16Length() int                  { return 2 }
-func (binaryProtocol) I32Length() int                  { return 4 }
-func (binaryProtocol) I64Length() int                  { return 8 }
-func (binaryProtocol) DoubleLength() int               { return 8 }
-func (binaryProtocol) StringLength(v string) int       { return 4 + len(v) }
-func (binaryProtocol) BinaryLength(v []byte) int       { return 4 + len(v) }
-func (binaryProtocol) StringLengthNocopy(v string) int { return 4 + len(v) }
-func (binaryProtocol) BinaryLengthNocopy(v []byte) int { return 4 + len(v) }
+func (BinaryProtocol) FieldBeginLength() int           { return 3 }
+func (BinaryProtocol) FieldStopLength() int            { return 1 }
+func (BinaryProtocol) MapBeginLength() int             { return 6 }
+func (BinaryProtocol) ListBeginLength() int            { return 5 }
+func (BinaryProtocol) SetBeginLength() int             { return 5 }
+func (BinaryProtocol) BoolLength() int                 { return 1 }
+func (BinaryProtocol) ByteLength() int                 { return 1 }
+func (BinaryProtocol) I16Length() int                  { return 2 }
+func (BinaryProtocol) I32Length() int                  { return 4 }
+func (BinaryProtocol) I64Length() int                  { return 8 }
+func (BinaryProtocol) DoubleLength() int               { return 8 }
+func (BinaryProtocol) StringLength(v string) int       { return 4 + len(v) }
+func (BinaryProtocol) BinaryLength(v []byte) int       { return 4 + len(v) }
+func (BinaryProtocol) StringLengthNocopy(v string) int { return 4 + len(v) }
+func (BinaryProtocol) BinaryLengthNocopy(v []byte) int { return 4 + len(v) }
 
 // Read methods
 
@@ -225,7 +226,7 @@ var (
 	errBadVersion  = NewProtocolException(BAD_VERSION, "ReadMessageBegin: bad version")
 )
 
-func (binaryProtocol) ReadMessageBegin(buf []byte) (name string, typeID TMessageType, seq int32, l int, err error) {
+func (p BinaryProtocol) ReadMessageBegin(buf []byte) (name string, typeID TMessageType, seq int32, l int, err error) {
 	if len(buf) < 4 { // version+type header + name header
 		return "", 0, 0, 0, errReadMessage
 	}
@@ -240,14 +241,14 @@ func (binaryProtocol) ReadMessageBegin(buf []byte) (name string, typeID TMessage
 	off := 4
 
 	// read method name
-	name, l, err1 := Binary.ReadString(buf[off:])
+	name, l, err1 := p.ReadString(buf[off:])
 	if err1 != nil {
 		return "", 0, 0, 0, errReadMessage
 	}
 	off += l
 
 	// read seq
-	seq, l, err2 := Binary.ReadI32(buf[off:])
+	seq, l, err2 := p.ReadI32(buf[off:])
 	if err2 != nil {
 		return "", 0, 0, 0, errReadMessage
 	}
@@ -271,7 +272,7 @@ var (
 	errReadDouble = NewProtocolException(INVALID_DATA, "ReadDouble: len(buf) < 8")
 )
 
-func (binaryProtocol) ReadFieldBegin(buf []byte) (typeID TType, id int16, l int, err error) {
+func (BinaryProtocol) ReadFieldBegin(buf []byte) (typeID TType, id int16, l int, err error) {
 	if len(buf) < 1 {
 		return 0, 0, 0, errReadField
 	}
@@ -285,29 +286,29 @@ func (binaryProtocol) ReadFieldBegin(buf []byte) (typeID TType, id int16, l int,
 	return typeID, int16(binary.BigEndian.Uint16(buf[1:])), 3, nil
 }
 
-func (binaryProtocol) ReadMapBegin(buf []byte) (kt, vt TType, size, l int, err error) {
+func (BinaryProtocol) ReadMapBegin(buf []byte) (kt, vt TType, size, l int, err error) {
 	if len(buf) < 6 {
 		return 0, 0, 0, 0, errReadMap
 	}
 	return TType(buf[0]), TType(buf[1]), int(binary.BigEndian.Uint32(buf[2:])), 6, nil
 }
 
-func (binaryProtocol) ReadListBegin(buf []byte) (et TType, size, l int, err error) {
+func (BinaryProtocol) ReadListBegin(buf []byte) (et TType, size, l int, err error) {
 	if len(buf) < 5 {
 		return 0, 0, 0, errReadList
 	}
 	return TType(buf[0]), int(binary.BigEndian.Uint32(buf[1:])), 5, nil
 }
 
-func (binaryProtocol) ReadSetBegin(buf []byte) (et TType, size, l int, err error) {
+func (BinaryProtocol) ReadSetBegin(buf []byte) (et TType, size, l int, err error) {
 	if len(buf) < 5 {
 		return 0, 0, 0, errReadSet
 	}
 	return TType(buf[0]), int(binary.BigEndian.Uint32(buf[1:])), 5, nil
 }
 
-func (binaryProtocol) ReadBinary(buf []byte) (b []byte, l int, err error) {
-	sz, _, err := Binary.ReadI32(buf)
+func (p BinaryProtocol) ReadBinary(buf []byte) (b []byte, l int, err error) {
+	sz, _, err := p.ReadI32(buf)
 	if err != nil {
 		return nil, 0, errReadBin
 	}
@@ -319,8 +320,8 @@ func (binaryProtocol) ReadBinary(buf []byte) (b []byte, l int, err error) {
 	return []byte(string(buf[4:l])), l, nil
 }
 
-func (binaryProtocol) ReadString(buf []byte) (s string, l int, err error) {
-	sz, _, err := Binary.ReadI32(buf)
+func (p BinaryProtocol) ReadString(buf []byte) (s string, l int, err error) {
+	sz, _, err := p.ReadI32(buf)
 	if err != nil {
 		return "", 0, errReadStr
 	}
@@ -332,7 +333,7 @@ func (binaryProtocol) ReadString(buf []byte) (s string, l int, err error) {
 	return string(buf[4:l]), l, nil
 }
 
-func (binaryProtocol) ReadBool(buf []byte) (v bool, l int, err error) {
+func (BinaryProtocol) ReadBool(buf []byte) (v bool, l int, err error) {
 	if len(buf) < 1 {
 		return false, 0, errReadBool
 	}
@@ -342,45 +343,42 @@ func (binaryProtocol) ReadBool(buf []byte) (v bool, l int, err error) {
 	return false, 1, nil
 }
 
-func (binaryProtocol) ReadByte(buf []byte) (v int8, l int, err error) {
+func (BinaryProtocol) ReadByte(buf []byte) (v int8, l int, err error) {
 	if len(buf) < 1 {
 		return 0, 0, errReadByte
 	}
 	return int8(buf[0]), 1, nil
 }
 
-func (binaryProtocol) ReadI16(buf []byte) (v int16, l int, err error) {
+func (BinaryProtocol) ReadI16(buf []byte) (v int16, l int, err error) {
 	if len(buf) < 2 {
 		return 0, 0, errReadI16
 	}
 	return int16(binary.BigEndian.Uint16(buf)), 2, nil
 }
 
-func (binaryProtocol) ReadI32(buf []byte) (v int32, l int, err error) {
+func (BinaryProtocol) ReadI32(buf []byte) (v int32, l int, err error) {
 	if len(buf) < 4 {
 		return 0, 0, errReadI32
 	}
 	return int32(binary.BigEndian.Uint32(buf)), 4, nil
 }
 
-func (binaryProtocol) ReadI64(buf []byte) (v int64, l int, err error) {
+func (BinaryProtocol) ReadI64(buf []byte) (v int64, l int, err error) {
 	if len(buf) < 8 {
 		return 0, 0, errReadI64
 	}
 	return int64(binary.BigEndian.Uint64(buf)), 8, nil
 }
 
-func (binaryProtocol) ReadDouble(buf []byte) (v float64, l int, err error) {
+func (BinaryProtocol) ReadDouble(buf []byte) (v float64, l int, err error) {
 	if len(buf) < 8 {
 		return 0, 0, errReadDouble
 	}
 	return math.Float64frombits(binary.BigEndian.Uint64(buf)), 8, nil
 }
 
-var (
-	errDepthLimitExceeded = NewProtocolException(DEPTH_LIMIT, "depth limit exceeded")
-	errNegativeSize       = NewProtocolException(NEGATIVE_SIZE, "negative size")
-)
+var errDepthLimitExceeded = NewProtocolException(DEPTH_LIMIT, "depth limit exceeded")
 
 var typeToSize = [256]int8{
 	BOOL:   1,
@@ -391,91 +389,155 @@ var typeToSize = [256]int8{
 	I64:    8,
 }
 
-func skipstr(b []byte) int {
-	return 4 + int(binary.BigEndian.Uint32(b))
+func skipstr(p unsafe.Pointer, e uintptr) (int, error) {
+	if uintptr(p)+uintptr(4) <= e {
+		n := int(p2i32(p))
+		if n < 0 {
+			return 0, errNegativeSize
+		}
+		if uintptr(p)+uintptr(4+n) <= e {
+			return 4 + n, nil
+		}
+	}
+	return 0, errBufferTooShort
 }
 
 // Skip skips over the value for the given type using Go implementation.
-func (binaryProtocol) Skip(b []byte, t TType) (int, error) {
-	return skipType(b, t, defaultRecursionDepth)
+func (BinaryProtocol) Skip(b []byte, t TType) (int, error) {
+	if len(b) == 0 {
+		return 0, errBufferTooShort
+	}
+	p := unsafe.Pointer(&b[0])
+	e := uintptr(p) + uintptr(len(b))
+	return skipType(p, e, t, defaultRecursionDepth)
 }
 
-func skipType(b []byte, t TType, maxdepth int) (int, error) {
+func skipType(p unsafe.Pointer, e uintptr, t TType, maxdepth int) (int, error) {
 	if maxdepth == 0 {
 		return 0, errDepthLimitExceeded
 	}
 	if n := typeToSize[t]; n > 0 {
+		if uintptr(p)+uintptr(n) > e {
+			return 0, errBufferTooShort
+		}
 		return int(n), nil
 	}
+	var err error
 	switch t {
 	case STRING:
-		return skipstr(b), nil
+		return skipstr(p, e)
 	case MAP:
-		i := 6
-		kt, vt, sz := TType(b[0]), TType(b[1]), int32(binary.BigEndian.Uint32(b[2:]))
+		if uintptr(p)+uintptr(6) > e {
+			return 0, errBufferTooShort
+		}
+		kt, vt, sz := TType(*(*byte)(p)), TType(*(*byte)(unsafe.Add(p, 1))), p2i32(unsafe.Add(p, 2))
 		if sz < 0 {
 			return 0, errNegativeSize
 		}
 		ksz, vsz := int(typeToSize[kt]), int(typeToSize[vt])
-		if ksz > 0 && vsz > 0 {
-			return i + (int(sz) * (ksz + vsz)), nil
+		if ksz > 0 && vsz > 0 { // fast path, fast skip
+			mapkvsize := (int(sz) * (ksz + vsz))
+			if uintptr(p)+uintptr(6+mapkvsize) > e {
+				return 0, errBufferTooShort
+			}
+			return 6 + mapkvsize, nil
 		}
+		i := 6
 		for j := int32(0); j < sz; j++ {
+			if uintptr(p)+uintptr(i) >= e {
+				return 0, errBufferTooShort
+			}
+			ki := 0
 			if ksz > 0 {
-				i += ksz
+				ki = ksz
 			} else if kt == STRING {
-				i += skipstr(b[i:])
-			} else if n, err := skipType(b[i:], kt, maxdepth-1); err != nil {
-				return i, err
+				ki, err = skipstr(unsafe.Add(p, i), e)
 			} else {
-				i += n
+				ki, err = skipType(unsafe.Add(p, i), e, kt, maxdepth-1)
 			}
+			if err != nil {
+				return i, err
+			}
+			i += ki
+			if uintptr(p)+uintptr(i) >= e {
+				return 0, errBufferTooShort
+			}
+			vi := 0
 			if vsz > 0 {
-				i += vsz
+				vi = vsz
 			} else if vt == STRING {
-				i += skipstr(b[i:])
-			} else if n, err := skipType(b[i:], vt, maxdepth-1); err != nil {
-				return i, err
+				vi, err = skipstr(unsafe.Add(p, i), e)
 			} else {
-				i += n
+				vi, err = skipType(unsafe.Add(p, i), e, vt, maxdepth-1)
 			}
+			if err != nil {
+				return i, err
+			}
+			i += vi
 		}
 		return i, nil
 	case LIST, SET:
-		i := 5
-		vt, sz := TType(b[0]), int32(binary.BigEndian.Uint32(b[1:]))
+		if uintptr(p)+uintptr(5) > e {
+			return 0, errBufferTooShort
+		}
+		vt, sz := TType(*(*byte)(p)), p2i32(unsafe.Add(p, 1))
 		if sz < 0 {
 			return 0, errNegativeSize
 		}
-		if typeToSize[vt] > 0 {
-			return i + int(sz)*int(typeToSize[vt]), nil
-		}
-		for j := int32(0); j < sz; j++ {
-			if vt == STRING {
-				i += skipstr(b[i:])
-			} else if n, err := skipType(b[i:], vt, maxdepth-1); err != nil {
-				return i, err
-			} else {
-				i += n
+		vsz := int(typeToSize[vt])
+		if vsz > 0 { // fast path, fast skip
+			listvsize := int(sz) * vsz
+			if uintptr(p)+uintptr(5+listvsize) > e {
+				return 0, errBufferTooShort
 			}
+			return 5 + listvsize, nil
+		}
+		i := 5
+		for j := int32(0); j < sz; j++ {
+			if uintptr(p)+uintptr(i) >= e {
+				return 0, errBufferTooShort
+			}
+			vi := 0
+			if vsz > 0 {
+				vi = vsz
+			} else if vt == STRING {
+				vi, err = skipstr(unsafe.Add(p, i), e)
+			} else {
+				vi, err = skipType(unsafe.Add(p, i), e, vt, maxdepth-1)
+			}
+			if err != nil {
+				return i, err
+			}
+			i += vi
 		}
 		return i, nil
 	case STRUCT:
 		i := 0
 		for {
-			ft := TType(b[i])
+			if uintptr(p)+uintptr(i) >= e {
+				return i, errBufferTooShort
+			}
+			ft := TType(*(*byte)(unsafe.Add(p, i)))
 			i += 1 // TType
 			if ft == STOP {
 				return i, nil
 			}
 			i += 2 // Field ID
-			if typeToSize[ft] > 0 {
-				i += int(typeToSize[ft])
-			} else if n, err := skipType(b[i:], ft, maxdepth-1); err != nil {
-				return i, err
-			} else {
-				i += n
+			if uintptr(p)+uintptr(i) >= e {
+				return i, errBufferTooShort
 			}
+			fi := 0
+			if typeToSize[ft] > 0 {
+				fi = int(typeToSize[ft])
+			} else if ft == STRING {
+				fi, err = skipstr(unsafe.Add(p, i), e)
+			} else {
+				fi, err = skipType(unsafe.Add(p, i), e, ft, maxdepth-1)
+			}
+			if err != nil {
+				return i, err
+			}
+			i += fi
 		}
 	default:
 		return 0, NewProtocolException(INVALID_DATA, fmt.Sprintf("unknown data type %d", t))

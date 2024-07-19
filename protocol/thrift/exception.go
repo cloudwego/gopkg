@@ -154,6 +154,8 @@ func NewTransportException(t int32, m string) *TransportException {
 // it implements ThriftFastCodec interface.
 type ProtocolException struct {
 	ApplicationException // same implementation ...
+
+	err error
 }
 
 const ( // ProtocolException codes from apache thrift
@@ -166,12 +168,40 @@ const ( // ProtocolException codes from apache thrift
 	DEPTH_LIMIT                = 6
 )
 
-// NewTransportException ...
+var (
+	errBufferTooShort = NewProtocolException(INVALID_DATA, "buffer too short")
+	errNegativeSize   = NewProtocolException(NEGATIVE_SIZE, "negative size")
+)
+
+// NewTransportExceptionWithType
 func NewProtocolException(t int32, m string) *ProtocolException {
 	ret := ProtocolException{}
 	ret.t = t
 	ret.m = m
 	return &ret
+}
+
+// NewProtocolException ...
+func NewProtocolExceptionWithErr(err error) *ProtocolException {
+	e, ok := err.(*ProtocolException)
+	if ok {
+		return e
+	}
+	ret := NewProtocolException(UNKNOWN_PROTOCOL_EXCEPTION, err.Error())
+	ret.err = err
+	return ret
+}
+
+// Unwrap ... for errors pkg
+func (e *ProtocolException) Unwrap() error { return e.err }
+
+// Is ... for errors pkg
+func (e *ProtocolException) Is(err error) bool {
+	t, ok := err.(tException)
+	if ok && t.TypeId() == e.t && t.Error() == e.m {
+		return true
+	}
+	return errors.Is(e.err, err)
 }
 
 // Generic Thrift exception with TypeId method
