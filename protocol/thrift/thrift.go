@@ -59,18 +59,3 @@ const ( // for Write/ReadMessage
 	msgVersionMask = 0xffff0000
 	msgTypeMask    = 0x0000ffff // for TMessageType
 )
-
-var NocopyWriteThreshold = 4096 // use NocopyWriter when binary or string > the value
-
-// BinaryWriter represents the method used in thrift encoding for nocopy writes
-// It supports netpoll nocopy feature, see: https://github.com/cloudwego/netpoll/blob/develop/nocopy.go
-type NocopyWriter interface {
-	WriteDirect(b []byte, remainCap int) error
-}
-
-// ThriftFastCodec represents the interface of thrift fastcodec generated structs
-type ThriftFastCodec interface {
-	BLength() int
-	FastWriteNocopy(buf []byte, bw NocopyWriter) int
-	FastRead(buf []byte) (int, error)
-}

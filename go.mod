@@ -2,7 +2,10 @@ module github.com/cloudwego/gopkg
 
 go 1.17
 
-require github.com/stretchr/testify v1.9.0
+require (
+	github.com/bytedance/gopkg v0.0.0-20240711085056-a03554c296f8
+	github.com/stretchr/testify v1.9.0
+)
 
 require (
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
