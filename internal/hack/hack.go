@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package unsafe2
+package hack
 
 import "unsafe"
 

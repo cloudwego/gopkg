@@ -22,7 +22,7 @@ import (
 	"math"
 	"unsafe"
 
-	"github.com/cloudwego/gopkg/internal/unsafe2"
+	"github.com/cloudwego/gopkg/internal/hack"
 )
 
 var Binary BinaryProtocol
@@ -121,7 +121,7 @@ func (BinaryProtocol) WriteString(buf []byte, v string) int {
 }
 
 func (p BinaryProtocol) WriteStringNocopy(buf []byte, w NocopyWriter, v string) int {
-	return p.WriteBinaryNocopy(buf, w, unsafe2.StringToByteSlice(v))
+	return p.WriteBinaryNocopy(buf, w, hack.StringToByteSlice(v))
 }
 
 // Append methods
