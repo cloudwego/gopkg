@@ -188,7 +188,7 @@ func TestBinary(t *testing.T) {
 
 	{ // Message
 		testname, testtyp, testseq := "name", CALL, int32(7)
-		sz := Binary.MessageBeginLength(testname, testtyp, testseq)
+		sz := Binary.MessageBeginLength(testname)
 
 		b := Binary.AppendMessageBegin([]byte(nil), testname, testtyp, testseq)
 		require.Equal(t, int(sz), len(b))

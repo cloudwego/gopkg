@@ -199,8 +199,8 @@ func appendUint64(buf []byte, v uint64) []byte {
 
 // Length methods
 
-func (BinaryProtocol) MessageBeginLength(name string, _ TMessageType, _ int32) int {
-	return 4 + (4 + len(name)) + 4
+func (BinaryProtocol) MessageBeginLength(method string) int {
+	return 4 + (4 + len(method)) + 4
 }
 
 func (BinaryProtocol) FieldBeginLength() int           { return 3 }

@@ -60,7 +60,7 @@ func MarshalFastMsg(method string, msgType TMessageType, seq int32, msg FastCode
 	if method == "" {
 		return nil, errors.New("method not set")
 	}
-	sz := Binary.MessageBeginLength(method, msgType, seq) + msg.BLength()
+	sz := Binary.MessageBeginLength(method) + msg.BLength()
 	b := dirtmake.Bytes(sz, sz)
 	i := Binary.WriteMessageBegin(b, method, msgType, seq)
 	_ = msg.FastWriteNocopy(b[i:], nil)
