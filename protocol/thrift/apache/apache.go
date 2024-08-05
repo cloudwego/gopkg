@@ -43,6 +43,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"sync"
 )
 
 var (
@@ -101,6 +102,8 @@ func RegisterNewTBinaryProtocol(fn interface{}) error {
 		return errNewFuncTypeNotMatch(t)
 	}
 	newTBinaryProtocol = v
+	hasThriftRead = sync.Map{}
+	hasThriftWrite = sync.Map{}
 	return nil
 }
 
@@ -121,23 +124,74 @@ func checkThriftReadWriteFuncType(t reflect.Type) error {
 	return nil
 }
 
+var hasThriftRead = sync.Map{}
+
+// CheckThriftRead returns nil if v has Read method and matches the func signature
+func CheckThriftRead(v interface{}) error {
+	rv := reflect.ValueOf(v)
+	rt := rv.Type()
+	res, ok := hasThriftRead.Load(rt)
+	if ok {
+		// fast path
+		if res == nil {
+			return nil
+		}
+		return res.(error)
+	}
+	if rv.Kind() != reflect.Ptr {
+		hasThriftRead.Store(rt, errNotPointer)
+		return errNotPointer
+	}
+	fv := rv.MethodByName("Read")
+	if !fv.IsValid() {
+		hasThriftRead.Store(rt, errNoReadMethod)
+		return errNoReadMethod
+	}
+	if err := checkThriftReadWriteFuncType(fv.Type()); err != nil {
+		hasThriftRead.Store(rt, err)
+		return err
+	}
+	hasThriftRead.Store(rt, nil)
+	return nil
+}
+
+var hasThriftWrite = sync.Map{}
+
+// CheckThriftWrite returns nil if v has Write method and matches the func signature
+func CheckThriftWrite(v interface{}) error {
+	rv := reflect.ValueOf(v)
+	rt := rv.Type()
+	res, ok := hasThriftWrite.Load(rt)
+	if ok {
+		// fast path
+		if res == nil {
+			return nil
+		}
+		return res.(error)
+	}
+	if rv.Kind() != reflect.Ptr {
+		hasThriftWrite.Store(rt, errNotPointer)
+		return errNotPointer
+	}
+	fv := rv.MethodByName("Write")
+	if !fv.IsValid() {
+		hasThriftWrite.Store(rt, errNoWriteMethod)
+		return errNoWriteMethod
+	}
+	if err := checkThriftReadWriteFuncType(fv.Type()); err != nil {
+		hasThriftWrite.Store(rt, err)
+		return err
+	}
+	hasThriftWrite.Store(rt, nil)
+	return nil
+}
+
 // ThriftRead calls Read method of v.
 //
 // RegisterNewTBinaryProtocol must be called with `thrift.NewTBinaryProtocol`
 // before using this func.
 func ThriftRead(t TTransport, v interface{}) error {
-	rv := reflect.ValueOf(v)
-	if rv.Kind() != reflect.Ptr {
-		// Read/Write method is always pointer receiver
-		return errNotPointer
-	}
-	rfunc := rv.MethodByName("Read")
-
-	// check Read func signature: func(thrift.TProtocol) error
-	if !rfunc.IsValid() || rfunc.Kind() != reflect.Func {
-		return errNoReadMethod
-	}
-	if err := checkThriftReadWriteFuncType(rfunc.Type()); err != nil {
+	if err := CheckThriftRead(v); err != nil {
 		return err
 	}
 
@@ -145,6 +199,8 @@ func ThriftRead(t TTransport, v interface{}) error {
 	iprot := newTBinaryProtocol.Call([]reflect.Value{reflect.ValueOf(t), rvTrue, rvTrue})[0]
 
 	// err := v.Read(iprot)
+	rv := reflect.ValueOf(v)
+	rfunc := rv.MethodByName("Read")
 	err := rfunc.Call([]reflect.Value{iprot})[0]
 	if err.IsNil() {
 		return nil
@@ -157,18 +213,7 @@ func ThriftRead(t TTransport, v interface{}) error {
 // RegisterNewTBinaryProtocol must be called with `thrift.NewTBinaryProtocol`
 // before using this func.
 func ThriftWrite(t TTransport, v interface{}) error {
-	rv := reflect.ValueOf(v)
-	if rv.Kind() != reflect.Ptr {
-		// Read/Write method is always pointer receiver
-		return errNotPointer
-	}
-	wfunc := rv.MethodByName("Write")
-
-	// check Write func signature: func(thrift.TProtocol) error
-	if !wfunc.IsValid() || wfunc.Kind() != reflect.Func {
-		return errNoWriteMethod
-	}
-	if err := checkThriftReadWriteFuncType(wfunc.Type()); err != nil {
+	if err := CheckThriftWrite(v); err != nil {
 		return err
 	}
 
@@ -176,6 +221,8 @@ func ThriftWrite(t TTransport, v interface{}) error {
 	oprot := newTBinaryProtocol.Call([]reflect.Value{reflect.ValueOf(t), rvTrue, rvTrue})[0]
 
 	// err := v.Write(oprot)
+	rv := reflect.ValueOf(v)
+	wfunc := rv.MethodByName("Write")
 	err := wfunc.Call([]reflect.Value{oprot})[0]
 	if err.IsNil() {
 		return nil

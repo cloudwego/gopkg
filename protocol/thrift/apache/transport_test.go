@@ -19,16 +19,38 @@ package apache
 import (
 	"bytes"
 	"context"
+	"io"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
-func TestTBufferTransport(t *testing.T) {
-	buf := &bytes.Buffer{}
+type mockReadableLen struct {
+	io.ReadWriter
 
-	p := BufferTransport{buf}
+	n int
+}
+
+func (f *mockReadableLen) ReadableLen() int { return f.n }
+
+func TestTBufferTransport(t *testing.T) {
+	m := &mockReadableLen{n: 7}
+	p := NewDefaultTransport(m)
 	_ = p.IsOpen()
 	_ = p.Open()
 	_ = p.Close()
 	_ = p.Flush(context.Background())
-	_ = p.RemainingBytes()
+	require.Equal(t, uint64(7), p.RemainingBytes())
+	m.n = -1
+	require.Equal(t, ^uint64(0), p.RemainingBytes())
+
+	b := &bytes.Buffer{}
+	b.WriteByte(0)
+	p = NewDefaultTransport(b)
+	_ = p.IsOpen()
+	_ = p.Open()
+	_ = p.Flush(context.Background())
+	require.Equal(t, uint64(1), p.RemainingBytes())
+	require.NoError(t, p.Close())
+	require.Equal(t, uint64(0), p.RemainingBytes())
 }
