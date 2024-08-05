@@ -22,6 +22,7 @@ import (
 	"errors"
 	"io"
 	"reflect"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -85,7 +86,7 @@ func TestThriftWriteRead(t *testing.T) {
 		assert.True(t, b0)
 		assert.True(t, b1)
 		called++
-		return trans.(BufferTransport).Buffer
+		return trans.(bufferTransport).Buffer
 	}
 	err := RegisterNewTBinaryProtocol(fn)
 	require.NoError(t, err)
@@ -93,12 +94,12 @@ func TestThriftWriteRead(t *testing.T) {
 
 	buf := &bytes.Buffer{}
 	p0 := &TestingWriteRead{Msg: "hello"}
-	err = ThriftWrite(BufferTransport{buf}, p0) // calls p0.Write
+	err = ThriftWrite(NewBufferTransport(buf), p0) // calls p0.Write
 	require.NoError(t, err)
 	require.Equal(t, 1, called)
 
 	p1 := &TestingWriteRead{}
-	err = ThriftRead(BufferTransport{buf}, p1) // calls p1.Read
+	err = ThriftRead(NewBufferTransport(buf), p1) // calls p1.Read
 	require.NoError(t, err)
 	require.Equal(t, 2, called)
 	require.Equal(t, p0, p1)
@@ -112,15 +113,19 @@ func (p *TestingWriteReadMethodNotMatch) Write(v bool) error { return nil }
 func TestThriftWriteReadErr(t *testing.T) {
 	var err error
 
+	// reset type cache
+	hasThriftRead = sync.Map{}
+	hasThriftWrite = sync.Map{}
+
 	// errNotPointer
 	p := TestingWriteRead{Msg: "hello"}
-	err = ThriftWrite(BufferTransport{nil}, p)
+	err = ThriftWrite(NewBufferTransport(nil), p)
 	assert.Same(t, err, errNotPointer)
-	err = ThriftRead(BufferTransport{nil}, p)
+	err = ThriftRead(NewBufferTransport(nil), p)
 	assert.Same(t, err, errNotPointer)
 
 	// errNoNewTBinaryProtocol
-	err = ThriftWrite(BufferTransport{nil}, &p)
+	err = ThriftWrite(NewBufferTransport(nil), &p)
 	assert.Same(t, err, errNoNewTBinaryProtocol)
 
 	// Read/Write returns err
@@ -128,15 +133,15 @@ func TestThriftWriteReadErr(t *testing.T) {
 	RegisterNewTBinaryProtocol(fn)
 	defer func() { newTBinaryProtocol = reflect.Value{} }()
 	p.mockErr = errors.New("mock")
-	err = ThriftWrite(BufferTransport{nil}, &p)
+	err = ThriftWrite(NewBufferTransport(nil), &p)
 	assert.Same(t, err, p.mockErr)
-	err = ThriftRead(BufferTransport{nil}, &p)
+	err = ThriftRead(NewBufferTransport(nil), &p)
 	assert.Same(t, err, p.mockErr)
 
 	// errMethodType
 	p1 := TestingWriteReadMethodNotMatch{}
-	err = ThriftWrite(BufferTransport{nil}, &p1)
+	err = ThriftWrite(NewBufferTransport(nil), &p1)
 	assert.ErrorIs(t, err, errMethodType)
-	err = ThriftRead(BufferTransport{nil}, &p1)
+	err = ThriftRead(NewBufferTransport(nil), &p1)
 	assert.ErrorIs(t, err, errMethodType)
 }

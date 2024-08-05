@@ -31,15 +31,47 @@ type TTransport interface {
 	IsOpen() bool
 }
 
-// BufferTransport extends bytes.Buffer to support TTransport
-type BufferTransport struct {
+type defaultTransport struct {
+	io.ReadWriter
+}
+
+// NewDefaultTransport converts io.ReadWriter to TTransport.
+// Use NewBufferTransport if using *bytes.Buffer for better performance.
+func NewDefaultTransport(rw io.ReadWriter) TTransport {
+	return defaultTransport{rw}
+}
+
+// remoteByteBuffer presents remote.ByteBuffer in kitex
+type remoteByteBuffer interface {
+	ReadableLen() (n int)
+}
+
+func (p defaultTransport) IsOpen() bool                  { return true }
+func (p defaultTransport) Open() error                   { return nil }
+func (p defaultTransport) Close() error                  { return nil }
+func (p defaultTransport) Flush(_ context.Context) error { return nil }
+
+func (p defaultTransport) RemainingBytes() uint64 {
+	if v, ok := p.ReadWriter.(remoteByteBuffer); ok {
+		n := v.ReadableLen()
+		if n > 0 {
+			return uint64(n)
+		}
+	}
+	return ^uint64(0)
+}
+
+type bufferTransport struct {
 	*bytes.Buffer
 }
 
-func (p BufferTransport) IsOpen() bool                  { return true }
-func (p BufferTransport) Open() error                   { return nil }
-func (p BufferTransport) Close() error                  { p.Reset(); return nil }
-func (p BufferTransport) Flush(_ context.Context) error { return nil }
-func (p BufferTransport) RemainingBytes() uint64        { return uint64(p.Len()) }
+// NewBufferTransport extends bytes.Buffer to support TTransport
+func NewBufferTransport(buf *bytes.Buffer) TTransport {
+	return bufferTransport{buf}
+}
 
-var _ TTransport = BufferTransport{nil}
+func (p bufferTransport) IsOpen() bool                  { return true }
+func (p bufferTransport) Open() error                   { return nil }
+func (p bufferTransport) Close() error                  { p.Reset(); return nil }
+func (p bufferTransport) Flush(_ context.Context) error { return nil }
+func (p bufferTransport) RemainingBytes() uint64        { return uint64(p.Len()) }
