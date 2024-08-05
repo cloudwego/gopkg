@@ -40,6 +40,20 @@ func (p *TrafficEnv) InitDefault() {
 	p.Env = ""
 }
 
+func (p *TrafficEnv) GetOpen() (v bool) {
+	return p.Open
+}
+
+func (p *TrafficEnv) GetEnv() (v string) {
+	return p.Env
+}
+func (p *TrafficEnv) SetOpen(val bool) {
+	p.Open = val
+}
+func (p *TrafficEnv) SetEnv(val string) {
+	p.Env = val
+}
+
 func (p *TrafficEnv) String() string {
 	if p == nil {
 		return "<nil>"
@@ -78,6 +92,66 @@ func (p *Base) InitDefault() {
 	p.Client = ""
 }
 
+func (p *Base) GetLogID() (v string) {
+	return p.LogID
+}
+
+func (p *Base) GetCaller() (v string) {
+	return p.Caller
+}
+
+func (p *Base) GetAddr() (v string) {
+	return p.Addr
+}
+
+func (p *Base) GetClient() (v string) {
+	return p.Client
+}
+
+var Base_TrafficEnv_DEFAULT *TrafficEnv
+
+func (p *Base) GetTrafficEnv() (v *TrafficEnv) {
+	if !p.IsSetTrafficEnv() {
+		return Base_TrafficEnv_DEFAULT
+	}
+	return p.TrafficEnv
+}
+
+var Base_Extra_DEFAULT map[string]string
+
+func (p *Base) GetExtra() (v map[string]string) {
+	if !p.IsSetExtra() {
+		return Base_Extra_DEFAULT
+	}
+	return p.Extra
+}
+func (p *Base) SetLogID(val string) {
+	p.LogID = val
+}
+func (p *Base) SetCaller(val string) {
+	p.Caller = val
+}
+func (p *Base) SetAddr(val string) {
+	p.Addr = val
+}
+func (p *Base) SetClient(val string) {
+	p.Client = val
+}
+func (p *Base) SetTrafficEnv(val *TrafficEnv) {
+	p.TrafficEnv = val
+}
+func (p *Base) SetExtra(val map[string]string) {
+	p.Extra = val
+}
+
+func (p *Base) IsSetTrafficEnv() bool {
+	return p.TrafficEnv != nil
+}
+
+func (p *Base) IsSetExtra() bool {
+	return p.Extra != nil
+}
+
 func (p *Base) String() string {
 	if p == nil {
 		return "<nil>"
@@ -111,6 +185,36 @@ func NewBaseResp() *BaseResp {
 func (p *BaseResp) InitDefault() {
 	p.StatusMessage = ""
 	p.StatusCode = 0
+}
+
+func (p *BaseResp) GetStatusMessage() (v string) {
+	return p.StatusMessage
+}
+
+func (p *BaseResp) GetStatusCode() (v int32) {
+	return p.StatusCode
+}
+
+var BaseResp_Extra_DEFAULT map[string]string
+
+func (p *BaseResp) GetExtra() (v map[string]string) {
+	if !p.IsSetExtra() {
+		return BaseResp_Extra_DEFAULT
+	}
+	return p.Extra
+}
+func (p *BaseResp) SetStatusMessage(val string) {
+	p.StatusMessage = val
+}
+func (p *BaseResp) SetStatusCode(val int32) {
+	p.StatusCode = val
+}
+func (p *BaseResp) SetExtra(val map[string]string) {
+	p.Extra = val
+}
+
+func (p *BaseResp) IsSetExtra() bool {
+	return p.Extra != nil
 }
 
 func (p *BaseResp) String() string {
