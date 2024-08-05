@@ -2,18 +2,6 @@
 
 set -e
 
-thriftgo -g fastgo:no_default_serdes=true -o=.. ./base.thrift
-
-mv base.go base_tmp.go # fix sed base.go > base.go
-# rm unused funcs and vars, keep the file smaller:
-# func GetXXX
-# func IsSet
-# multiline DEFAULT vars
-# singleline DEFAULT vars
-sed '/func.* Get.* {/,/^}/d' base_tmp.go |\
-  sed '/func.* IsSet.* {/,/^}/d' |\
-  sed '/DEFAULT.*{/,/^}/d' |\
-  sed '/DEFAULT/d' > base.go
-
+thriftgo -g fastgo:no_default_serdes=true,gen_setter=true -o=.. ./base.thrift
 gofmt -w base.go
-rm base_tmp.go
+gofmt -w k-base.go
