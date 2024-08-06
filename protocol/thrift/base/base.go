@@ -22,57 +22,11 @@ import (
 	"fmt"
 )
 
-type TrafficEnv struct {
-	Open bool   `thrift:"Open,1" json:"Open"`
-	Env  string `thrift:"Env,2" json:"Env"`
-}
-
-func NewTrafficEnv() *TrafficEnv {
-	return &TrafficEnv{
-
-		Open: false,
-		Env:  "",
-	}
-}
-
-func (p *TrafficEnv) InitDefault() {
-	p.Open = false
-	p.Env = ""
-}
-
-func (p *TrafficEnv) GetOpen() (v bool) {
-	return p.Open
-}
-
-func (p *TrafficEnv) GetEnv() (v string) {
-	return p.Env
-}
-func (p *TrafficEnv) SetOpen(val bool) {
-	p.Open = val
-}
-func (p *TrafficEnv) SetEnv(val string) {
-	p.Env = val
-}
-
-func (p *TrafficEnv) String() string {
-	if p == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("TrafficEnv(%+v)", *p)
-}
-
-var fieldIDToName_TrafficEnv = map[int16]string{
-	1: "Open",
-	2: "Env",
-}
-
 type Base struct {
-	LogID      string            `thrift:"LogID,1" json:"LogID"`
-	Caller     string            `thrift:"Caller,2" json:"Caller"`
-	Addr       string            `thrift:"Addr,3" json:"Addr"`
-	Client     string            `thrift:"Client,4" json:"Client"`
-	TrafficEnv *TrafficEnv       `thrift:"TrafficEnv,5,optional" json:"TrafficEnv,omitempty"`
-	Extra      map[string]string `thrift:"Extra,6,optional" json:"Extra,omitempty"`
+	LogID  string            `thrift:"LogID,1" json:"LogID"`
+	Caller string            `thrift:"Caller,2" json:"Caller"`
+	Addr   string            `thrift:"Addr,3" json:"Addr"`
+	Extra  map[string]string `thrift:"Extra,6,optional" json:"Extra,omitempty"`
 }
 
 func NewBase() *Base {
@@ -81,7 +35,6 @@ func NewBase() *Base {
 		LogID:  "",
 		Caller: "",
 		Addr:   "",
-		Client: "",
 	}
 }
 
@@ -89,7 +42,6 @@ func (p *Base) InitDefault() {
 	p.LogID = ""
 	p.Caller = ""
 	p.Addr = ""
-	p.Client = ""
 }
 
 func (p *Base) GetLogID() (v string) {
@@ -102,19 +54,6 @@ func (p *Base) GetCaller() (v string) {
 
 func (p *Base) GetAddr() (v string) {
 	return p.Addr
-}
-
-func (p *Base) GetClient() (v string) {
-	return p.Client
-}
-
-var Base_TrafficEnv_DEFAULT *TrafficEnv
-
-func (p *Base) GetTrafficEnv() (v *TrafficEnv) {
-	if !p.IsSetTrafficEnv() {
-		return Base_TrafficEnv_DEFAULT
-	}
-	return p.TrafficEnv
 }
 
 var Base_Extra_DEFAULT map[string]string
@@ -134,18 +73,8 @@ func (p *Base) SetCaller(val string) {
 func (p *Base) SetAddr(val string) {
 	p.Addr = val
 }
-func (p *Base) SetClient(val string) {
-	p.Client = val
-}
-func (p *Base) SetTrafficEnv(val *TrafficEnv) {
-	p.TrafficEnv = val
-}
 func (p *Base) SetExtra(val map[string]string) {
 	p.Extra = val
-}
-
-func (p *Base) IsSetTrafficEnv() bool {
-	return p.TrafficEnv != nil
 }
 
 func (p *Base) IsSetExtra() bool {
@@ -163,8 +92,6 @@ var fieldIDToName_Base = map[int16]string{
 	1: "LogID",
 	2: "Caller",
 	3: "Addr",
-	4: "Client",
-	5: "TrafficEnv",
 	6: "Extra",
 }
 

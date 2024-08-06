@@ -30,7 +30,6 @@ func TestBase(t *testing.T) {
 	p.LogID = "1"
 	p.Caller = "2"
 	p.Addr = "3"
-	p.Client = "4"
 	t.Log(p.String())
 
 	sz := p.BLength()
@@ -45,9 +44,6 @@ func TestBase(t *testing.T) {
 	require.Equal(t, p, p2)
 
 	// optional fields
-
-	p.TrafficEnv = NewTrafficEnv()
-	p.TrafficEnv.InitDefault() // for code coverage ...
 	p.Extra = map[string]string{"5": "6"}
 	t.Log(p.String())
 
