@@ -46,7 +46,7 @@ var (
 	fnThriftWrite func(t TTransport, v interface{}) error
 )
 
-// RegisterNewTBinaryProtocol accepts `thrift.NewTBinaryProtocol` func and save it for later use.
+// RegisterCheckTStruct accepts `thrift.TStruct check` func and save it for later use.
 func RegisterCheckTStruct(fn func(v interface{}) error) {
 	fnCheckTStruct = fn
 }
