@@ -38,7 +38,7 @@ func TestThriftReadWrite(t *testing.T) {
 
 	buf := &bytes.Buffer{}
 
-	err = ThriftWrite(NewBufferTransport(buf), v)
+	err = ThriftWrite(buf, v)
 	require.Same(t, err, errThriftWriteNotRegistered)
 
 	RegisterThriftWrite(callThriftWrite)
@@ -84,18 +84,18 @@ func checkTStruct(v interface{}) error {
 	return nil
 }
 
-func callThriftRead(t TTransport, v interface{}) error {
+func callThriftRead(rw io.ReadWriter, v interface{}) error {
 	p, ok := v.(TStruct)
 	if !ok {
 		return errNotThriftTStruct
 	}
-	return p.Read(t)
+	return p.Read(rw)
 }
 
-func callThriftWrite(t TTransport, v interface{}) error {
+func callThriftWrite(rw io.ReadWriter, v interface{}) error {
 	p, ok := v.(TStruct)
 	if !ok {
 		return errNotThriftTStruct
 	}
-	return p.Write(t)
+	return p.Write(rw)
 }
