@@ -37,13 +37,14 @@ package apache
 
 import (
 	"errors"
+	"io"
 )
 
 var (
 	fnCheckTStruct func(v interface{}) error
 
-	fnThriftRead  func(t TTransport, v interface{}) error
-	fnThriftWrite func(t TTransport, v interface{}) error
+	fnThriftRead  func(rw io.ReadWriter, v interface{}) error
+	fnThriftWrite func(rw io.ReadWriter, v interface{}) error
 )
 
 // RegisterCheckTStruct accepts `thrift.TStruct check` func and save it for later use.
@@ -52,12 +53,12 @@ func RegisterCheckTStruct(fn func(v interface{}) error) {
 }
 
 // RegisterThriftRead ...
-func RegisterThriftRead(fn func(t TTransport, v interface{}) error) {
+func RegisterThriftRead(fn func(rw io.ReadWriter, v interface{}) error) {
 	fnThriftRead = fn
 }
 
 // RegisterThriftWrite ...
-func RegisterThriftWrite(fn func(t TTransport, v interface{}) error) {
+func RegisterThriftWrite(fn func(rw io.ReadWriter, v interface{}) error) {
 	fnThriftWrite = fn
 }
 
@@ -76,17 +77,17 @@ func CheckTStruct(v interface{}) error {
 }
 
 // ThriftRead ...
-func ThriftRead(t TTransport, v interface{}) error {
+func ThriftRead(rw io.ReadWriter, v interface{}) error {
 	if fnThriftRead == nil {
 		return errThriftReadNotRegistered
 	}
-	return fnThriftRead(t, v)
+	return fnThriftRead(rw, v)
 }
 
 // ThriftWrite ...
-func ThriftWrite(t TTransport, v interface{}) error {
+func ThriftWrite(rw io.ReadWriter, v interface{}) error {
 	if fnThriftWrite == nil {
 		return errThriftWriteNotRegistered
 	}
-	return fnThriftWrite(t, v)
+	return fnThriftWrite(rw, v)
 }
