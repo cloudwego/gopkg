@@ -17,7 +17,6 @@
 package mempool
 
 import (
-	"runtime/debug"
 	"testing"
 	"unsafe"
 
@@ -44,8 +43,6 @@ func TestCap(t *testing.T) {
 }
 
 func TestAppend(t *testing.T) {
-	debug.SetGCPercent(-1)        // make sure the buf in pools will not be recycled
-	defer debug.SetGCPercent(100) // reset to 100
 	str := "TestAppend"
 	b := Malloc(0)
 	for i := 0; i < 2000; i++ {
@@ -85,9 +82,11 @@ func TestFree(t *testing.T) {
 func Benchmark_MallocFree(b *testing.B) {
 	b.ReportAllocs()
 	b.RunParallel(func(pb *testing.PB) {
+		i := 0
 		for pb.Next() {
-			b := Malloc(1)
+			b := Malloc(i & 0xffff)
 			Free(b)
+			i++
 		}
 	})
 }
