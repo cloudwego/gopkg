@@ -82,6 +82,16 @@ func TestFree(t *testing.T) {
 	Free(b) // all good
 }
 
+func Benchmark_MallocFree(b *testing.B) {
+	b.ReportAllocs()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			b := Malloc(1)
+			Free(b)
+		}
+	})
+}
+
 func Benchmark_AppendStr(b *testing.B) {
 	str := "Benchmark_AppendStr"
 	b.ReportAllocs()

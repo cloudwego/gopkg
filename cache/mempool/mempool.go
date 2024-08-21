@@ -36,15 +36,20 @@ const (
 )
 
 const (
-	// footer is a [8]byte, it contains two parts: magic(58 bits) and index (6 bits)
+	// footer is a [8]byte, it contains two parts: magic(58 bits) and index (6 bits):
+	// * magic is for checking a []byte is created by this package
+	// * index is for `pools`, the cap of a []byte is always equal to pools[i].Size
+	// we use footer instead of header to ensure that `Free` is always safe regardless of the input provided.
 	footerLen = 8
 
-	footerMagicMask = uint64(0xFFFFFFFFFFFFFFC0) // 58 bits mask for `footerMagic`
-	footerIndexMask = uint64(0x000000000000003F) // 6 bits mask, [0, 63], for `pools`, `bits2idx`
-	footerMagic     = uint64(0xBADC0DEBADC0DEC0) // uint64 ends with 6 zero bits
+	footerMagicMask = uint64(0xFFFFFFFFFFFFFFC0) // 58 bits mask
+	footerIndexMask = uint64(0x000000000000003F) // 6 bits mask
+	footerMagic     = uint64(0xBADC0DEBADC0DEC0) // it ends with 6 zero bits which used by index
 )
 
-var bits2idx [64]int // bits.Len -> `pools[i]`
+// bits2idx maps bits.Len to the index of `pools`
+// for size < minMemPoolSize, bits2idx maps to `pools[0]` which is expected.
+var bits2idx [64]int
 
 func init() {
 	i := 0
@@ -112,7 +117,7 @@ func Malloc(size int) []byte {
 // Cap returns the max cap of a buf can be resized to.
 // See comment of `Malloc` for details
 func Cap(buf []byte) int {
-	if cap(buf)-len(buf) < footerLen || footer(buf) == 0 {
+	if cap(buf)-len(buf) < footerLen || getFooter(buf)&footerMagicMask != footerMagic {
 		panic("buf not malloc by this package or buf len changed without using Cap func")
 	}
 	return cap(buf) - footerLen
@@ -167,7 +172,7 @@ func Free(buf []byte) {
 	if c-size < footerLen { // size
 		return
 	}
-	footer := footer(buf)
+	footer := getFooter(buf)
 	// checks magic
 	if footer&footerMagicMask != footerMagic {
 		return
@@ -181,7 +186,7 @@ func Free(buf []byte) {
 	}
 }
 
-func footer(buf []byte) uint64 {
+func getFooter(buf []byte) uint64 {
 	h := (*sliceHeader)(unsafe.Pointer(&buf))
 	return *(*uint64)(unsafe.Add(h.Data, h.Cap-footerLen))
 }
