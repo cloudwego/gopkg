@@ -26,6 +26,7 @@ import (
 func TestMallocFree(t *testing.T) {
 	for i := 127; i < 1<<20; i += 1000 { //  it tests malloc 127B - 1MB, with step 1000
 		b := Malloc(i)
+		require.Equal(t, i, len(b))
 		Free(b)
 	}
 }
