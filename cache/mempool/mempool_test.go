@@ -79,6 +79,15 @@ func TestFree(t *testing.T) {
 	Free(b) // all good
 }
 
+func TestResetFooter(t *testing.T) {
+	b := Malloc(1)
+	x := getFooter(b)
+	require.True(t, x != 0)
+	resetFooter(b)
+	y := getFooter(b)
+	require.True(t, y == 0)
+}
+
 func Benchmark_MallocFree(b *testing.B) {
 	b.ReportAllocs()
 	b.RunParallel(func(pb *testing.PB) {

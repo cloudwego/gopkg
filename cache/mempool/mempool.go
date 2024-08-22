@@ -90,8 +90,8 @@ type sliceHeader struct {
 // Tips for usage:
 // * buf returned by Malloc may not be initialized with zeros, use at your own risk.
 // * call `Free` when buf is no longer use, DO NOT REUSE buf after calling `Free`
-// * use `buf = buf[:mempool.Cap(buf)]` to make use of the cap of a returned buf.
-// * DO NOT USE `cap` or `append` to resize, coz bytes at the end of buf are used for storing malloc info.
+// * use `b = b[:mempool.Cap(b)]` to make use of the cap of a returned buf.
+// * use `b = mempool.Append(b, data...)` to append bytes to the end of a buf.
 func Malloc(size int) []byte {
 	if size == 0 {
 		return []byte{}
@@ -159,6 +159,8 @@ func appendStrSlow(a []byte, b string) []byte {
 }
 
 // Free should be called when a buf is no longer used.
+// It's always safe regardless of `buf` provided.
+// It will NOT reuse `buf` if it's not created by `Malloc`.
 // See comment of `Malloc` for details.
 func Free(buf []byte) {
 	c := cap(buf)
@@ -169,7 +171,7 @@ func Free(buf []byte) {
 		return
 	}
 	size := len(buf)
-	if c-size < footerLen { // size
+	if c-size < footerLen {
 		return
 	}
 	footer := getFooter(buf)
@@ -181,6 +183,11 @@ func Free(buf []byte) {
 	i := int(footer & footerIndexMask)
 	if i < len(pools) {
 		if p := pools[i]; p.Size == c {
+			// reset footer before returning it to pool.
+			// so that buf can only be freed once.
+			// this doesn't solve concurrency issue,
+			// it only reduces the risk of calling `Free` twice shortly.
+			resetFooter(buf)
 			p.Put(&buf[0])
 		}
 	}
@@ -189,4 +196,9 @@ func Free(buf []byte) {
 func getFooter(buf []byte) uint64 {
 	h := (*sliceHeader)(unsafe.Pointer(&buf))
 	return *(*uint64)(unsafe.Add(h.Data, h.Cap-footerLen))
+}
+
+func resetFooter(buf []byte) {
+	h := (*sliceHeader)(unsafe.Pointer(&buf))
+	*(*uint64)(unsafe.Add(h.Data, h.Cap-footerLen)) = 0
 }
