@@ -29,10 +29,11 @@ var _ Reader = &DefaultReader{}
 type DefaultReader struct {
 	buf         []byte // buf[ri:] is the buffer for reading.
 	bufReadOnly bool
-	oldBuf      [][]byte
-	rd          io.Reader // reader provided by the client
-	ri          int       // buf read positions
-	err         error
+	pendingBuf  [][]byte
+
+	rd  io.Reader // reader provided by the client
+	ri  int       // buf read positions
+	err error
 
 	maxSizeStats maxSizeStats
 }
@@ -95,7 +96,7 @@ func (r *DefaultReader) acquireSlow(n int) int {
 		}
 		nbuf := mcache.Malloc(ncap)
 		if !r.bufReadOnly {
-			r.oldBuf = append(r.oldBuf, r.buf)
+			r.pendingBuf = append(r.pendingBuf, r.buf)
 		}
 		cn := copy(nbuf[r.ri:], r.buf[r.ri:])
 		r.buf = nbuf[:(r.ri + cn)]
@@ -185,12 +186,12 @@ func (r *DefaultReader) ReadBinary(bs []byte) (m int, err error) {
 }
 
 func (r *DefaultReader) Release(e error) error {
-	if r.oldBuf != nil {
-		for _, buf := range r.oldBuf {
+	if r.pendingBuf != nil {
+		for _, buf := range r.pendingBuf {
 			mcache.Free(buf)
 		}
 	}
-	r.oldBuf = nil
+	r.pendingBuf = nil
 	if len(r.buf)-r.ri == 0 {
 		// release buf
 		r.maxSizeStats.update(cap(r.buf))
@@ -219,10 +220,11 @@ func (fakeIOReader) Read(p []byte) (n int, err error) {
 var _ Writer = &DefaultWriter{}
 
 type DefaultWriter struct {
-	buf    []byte
-	oldBuf [][]byte
-	wd     io.Writer
-	err    error
+	buf        []byte
+	pendingBuf [][]byte
+
+	wd  io.Writer
+	err error
 
 	maxSizeStats maxSizeStats
 
@@ -282,6 +284,7 @@ func (w *DefaultWriter) acquireSlow(n int) {
 	if n > cap(w.buf)-len(w.buf) {
 		// grow buffer
 		var ncap int
+		// reserve the length of len(w.buf) for copying data from the old buffer during flush
 		for ncap = cap(w.buf) * 2; ncap-len(w.buf) < n; ncap *= 2 {
 		}
 		var nbuf []byte
@@ -290,7 +293,8 @@ func (w *DefaultWriter) acquireSlow(n int) {
 		} else {
 			nbuf = mcache.Malloc(ncap)
 		}
-		w.oldBuf = append(w.oldBuf, w.buf)
+		w.pendingBuf = append(w.pendingBuf, w.buf)
+		// delay copying until flushing
 		w.buf = nbuf[:len(w.buf)]
 	}
 }
@@ -335,7 +339,7 @@ func (w *DefaultWriter) Flush() (err error) {
 	}
 	// copy old buffer
 	var offset int
-	for _, oldBuf := range w.oldBuf {
+	for _, oldBuf := range w.pendingBuf {
 		offset += copy(w.buf[offset:], oldBuf[offset:])
 	}
 	if _, err = w.wd.Write(w.buf); err != nil {
@@ -345,14 +349,14 @@ func (w *DefaultWriter) Flush() (err error) {
 	w.maxSizeStats.update(cap(w.buf))
 	if !w.disableCache {
 		mcache.Free(w.buf)
-		if w.oldBuf != nil {
-			for _, buf := range w.oldBuf {
+		if w.pendingBuf != nil {
+			for _, buf := range w.pendingBuf {
 				mcache.Free(buf)
 			}
 		}
 	}
 	w.buf = nil
-	w.oldBuf = nil
+	w.pendingBuf = nil
 	return nil
 }
 
