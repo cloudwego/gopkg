@@ -18,10 +18,10 @@ package thrift
 
 import (
 	"bytes"
-	"math/rand"
 	"strings"
 	"testing"
 
+	"github.com/cloudwego/gopkg/bufiox"
 	"github.com/stretchr/testify/require"
 )
 
@@ -92,7 +92,7 @@ func TestSkipDecoder(t *testing.T) {
 	b = x.AppendFieldStop(b)
 	sz10 := len(b)
 
-	r := NewSkipDecoder(bytes.NewReader(b))
+	r := NewSkipDecoder(bufiox.NewBytesReader(b))
 	defer r.Release()
 
 	readn := 0
@@ -147,7 +147,7 @@ func TestSkipDecoder(t *testing.T) {
 		for i := 0; i < defaultRecursionDepth+1; i++ {
 			b = x.AppendFieldBegin(b, STRUCT, 1)
 		}
-		r := NewSkipDecoder(bytes.NewReader(b))
+		r := NewSkipDecoder(bufiox.NewBytesReader(b))
 		_, err := r.Next(STRUCT)
 		require.Same(t, errDepthLimitExceeded, err)
 
@@ -157,19 +157,79 @@ func TestSkipDecoder(t *testing.T) {
 	}
 }
 
-func TestSkipDecoderReset(t *testing.T) {
-	x := BinaryProtocol{}
-	b := x.AppendString([]byte(nil), "hello")
+var mockString = make([]byte, 5000)
 
-	r := NewSkipDecoder(nil)
-	for i := 0; i < 10; i++ {
-		if rand.Intn(2) == 1 { // random skipreader to test Reset
-			r.Reset(&remoteByteBufferImplForT{b: b})
-		} else {
-			r.Reset(bytes.NewReader(b))
+func BenchmarkSkipDecoder(b *testing.B) {
+	// prepare data
+	bs := make([]byte, 0, 1024)
+
+	// BOOL, fid=1
+	bs = Binary.AppendFieldBegin(bs, BOOL, 1)
+	bs = Binary.AppendBool(bs, true)
+
+	// BYTE, fid=2
+	bs = Binary.AppendFieldBegin(bs, BYTE, 2)
+	bs = Binary.AppendByte(bs, 2)
+
+	// I16, fid=3
+	bs = Binary.AppendFieldBegin(bs, I16, 3)
+	bs = Binary.AppendI16(bs, 3)
+
+	// I32, fid=4
+	bs = Binary.AppendFieldBegin(bs, I32, 4)
+	bs = Binary.AppendI32(bs, 4)
+
+	// I64, fid=5
+	bs = Binary.AppendFieldBegin(bs, I64, 5)
+	bs = Binary.AppendI64(bs, 5)
+
+	// DOUBLE, fid=6
+	bs = Binary.AppendFieldBegin(bs, DOUBLE, 6)
+	bs = Binary.AppendDouble(bs, 6)
+
+	// STRING, fid=7
+	bs = Binary.AppendFieldBegin(bs, STRING, 7)
+	bs = Binary.AppendString(bs, string(mockString))
+
+	// MAP, fid=8
+	bs = Binary.AppendFieldBegin(bs, MAP, 8)
+	bs = Binary.AppendMapBegin(bs, DOUBLE, DOUBLE, 1)
+	bs = Binary.AppendDouble(bs, 8.1)
+	bs = Binary.AppendDouble(bs, 8.2)
+
+	// SET, fid=9
+	bs = Binary.AppendFieldBegin(bs, SET, 9)
+	bs = Binary.AppendSetBegin(bs, I64, 1)
+	bs = Binary.AppendI64(bs, 9)
+
+	// LIST, fid=10
+	bs = Binary.AppendFieldBegin(bs, LIST, 10)
+	bs = Binary.AppendListBegin(bs, I64, 1)
+	bs = Binary.AppendI64(bs, 10)
+
+	// STRUCT with 1 field I64, fid=11,1
+	bs = Binary.AppendFieldBegin(bs, STRUCT, 11)
+	bs = Binary.AppendFieldBegin(bs, I64, 1)
+	bs = Binary.AppendI64(bs, 11)
+	bs = Binary.AppendFieldStop(bs)
+
+	// Finish struct
+	bs = Binary.AppendFieldStop(bs)
+
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			bufReader := bufiox.NewBytesReader(bs)
+			sr := NewSkipDecoder(bufReader)
+			buf, err := sr.Next(STRUCT)
+			if err != nil {
+				b.Fatal(err)
+			}
+			if !bytes.Equal(buf, bs) {
+				b.Fatal("bytes not equal")
+			}
+			sr.Release()
+			bufReader.Release(nil)
 		}
-		retb, err := r.Next(STRING)
-		require.NoError(t, err)
-		require.Equal(t, b, retb)
-	}
+	})
 }

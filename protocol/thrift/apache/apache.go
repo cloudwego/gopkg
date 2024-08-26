@@ -37,14 +37,15 @@ package apache
 
 import (
 	"errors"
-	"io"
+
+	"github.com/cloudwego/gopkg/bufiox"
 )
 
 var (
 	fnCheckTStruct func(v interface{}) error
 
-	fnThriftRead  func(rw io.ReadWriter, v interface{}) error
-	fnThriftWrite func(rw io.ReadWriter, v interface{}) error
+	fnThriftRead  func(r bufiox.Reader, v interface{}) error
+	fnThriftWrite func(w bufiox.Writer, v interface{}) error
 )
 
 // RegisterCheckTStruct accepts `thrift.TStruct check` func and save it for later use.
@@ -53,12 +54,12 @@ func RegisterCheckTStruct(fn func(v interface{}) error) {
 }
 
 // RegisterThriftRead ...
-func RegisterThriftRead(fn func(rw io.ReadWriter, v interface{}) error) {
+func RegisterThriftRead(fn func(r bufiox.Reader, v interface{}) error) {
 	fnThriftRead = fn
 }
 
 // RegisterThriftWrite ...
-func RegisterThriftWrite(fn func(rw io.ReadWriter, v interface{}) error) {
+func RegisterThriftWrite(fn func(w bufiox.Writer, v interface{}) error) {
 	fnThriftWrite = fn
 }
 
@@ -77,17 +78,17 @@ func CheckTStruct(v interface{}) error {
 }
 
 // ThriftRead ...
-func ThriftRead(rw io.ReadWriter, v interface{}) error {
+func ThriftRead(r bufiox.Reader, v interface{}) error {
 	if fnThriftRead == nil {
 		return errThriftReadNotRegistered
 	}
-	return fnThriftRead(rw, v)
+	return fnThriftRead(r, v)
 }
 
 // ThriftWrite ...
-func ThriftWrite(rw io.ReadWriter, v interface{}) error {
+func ThriftWrite(w bufiox.Writer, v interface{}) error {
 	if fnThriftWrite == nil {
 		return errThriftWriteNotRegistered
 	}
-	return fnThriftWrite(rw, v)
+	return fnThriftWrite(w, v)
 }
