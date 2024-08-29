@@ -128,3 +128,11 @@ func WriteString2BLen(val string, out bufiox.Writer) (int, error) {
 	}
 	return n + 2, nil
 }
+
+func IsStreaming(bytes []byte) bool {
+	if len(bytes) < 8 {
+		return false
+	}
+	return binary.BigEndian.Uint16(bytes[Size32:]) == uint16(TTHeaderMagic>>16) &&
+		binary.BigEndian.Uint16(bytes[Size32+Size16:])&uint16(HeaderFlagsStreaming) != 0
+}
