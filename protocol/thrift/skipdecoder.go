@@ -19,9 +19,13 @@ package thrift
 import (
 	"encoding/binary"
 	"fmt"
-	"io"
 	"sync"
+
+	"github.com/bytedance/gopkg/lang/mcache"
+	"github.com/cloudwego/gopkg/bufiox"
 )
+
+const defaultSkipDecoderSize = 4096
 
 var poolSkipDecoder = sync.Pool{
 	New: func() interface{} {
@@ -31,53 +35,46 @@ var poolSkipDecoder = sync.Pool{
 
 // SkipDecoder scans the underlying io.Reader and returns the bytes of a type
 type SkipDecoder struct {
-	p skipReaderIface
+	r bufiox.Reader
+
+	// for storing Next(ttype) buffer
+	nextBuf []byte
+
+	// for reusing buffer
+	pendingBuf [][]byte
 }
 
 // NewSkipDecoder ... call Release if no longer use
-func NewSkipDecoder(r io.Reader) *SkipDecoder {
+func NewSkipDecoder(r bufiox.Reader) *SkipDecoder {
 	p := poolSkipDecoder.Get().(*SkipDecoder)
-	p.Reset(r)
+	p.r = r
 	return p
 }
 
-// Reset ...
-func (p *SkipDecoder) Reset(r io.Reader) {
-	// fast path without returning to pool if remote.ByteBuffer && *skipByteBuffer
-	if buf, ok := r.(remoteByteBuffer); ok {
-		if p.p != nil {
-			r, ok := p.p.(*skipByteBuffer)
-			if ok {
-				r.Reset(buf)
-				return
-			}
-			p.p.Release()
-		}
-		p.p = newSkipByteBuffer(buf)
-		return
-	}
-
-	// not remote.ByteBuffer
-
-	if p.p != nil {
-		p.p.Release()
-	}
-	p.p = newSkipReader(r)
-}
-
-// Release ...
+// Release releases the peekAck decoder, callers cannot use the returned data of Next after calling Release.
 func (p *SkipDecoder) Release() {
-	p.p.Release()
-	p.p = nil
+	if cap(p.nextBuf) > 0 {
+		mcache.Free(p.nextBuf)
+	}
+	*p = SkipDecoder{}
 	poolSkipDecoder.Put(p)
 }
 
-// Next skips a specific type and returns its bytes
+// Next skips a specific type and returns its bytes.
+// Callers cannot use the returned data after calling Release.
 func (p *SkipDecoder) Next(t TType) (buf []byte, err error) {
-	if err := p.skip(t, defaultRecursionDepth); err != nil {
-		return nil, err
+	p.nextBuf = mcache.Malloc(0, defaultSkipDecoderSize)
+	if err = p.skip(t, defaultRecursionDepth); err != nil {
+		return
 	}
-	return p.p.Bytes()
+	var offset int
+	for _, b := range p.pendingBuf {
+		offset += copy(p.nextBuf[offset:], b[offset:])
+		mcache.Free(b)
+	}
+	p.pendingBuf = nil
+	buf = p.nextBuf
+	return
 }
 
 func (p *SkipDecoder) skip(t TType, maxdepth int) error {
@@ -85,12 +82,12 @@ func (p *SkipDecoder) skip(t TType, maxdepth int) error {
 		return errDepthLimitExceeded
 	}
 	if sz := typeToSize[t]; sz > 0 {
-		_, err := p.p.Next(int(sz))
+		_, err := p.next(int(sz))
 		return err
 	}
 	switch t {
 	case STRING:
-		b, err := p.p.Next(4)
+		b, err := p.next(4)
 		if err != nil {
 			return err
 		}
@@ -98,12 +95,12 @@ func (p *SkipDecoder) skip(t TType, maxdepth int) error {
 		if sz < 0 {
 			return errNegativeSize
 		}
-		if _, err := p.p.Next(sz); err != nil {
+		if _, err := p.next(sz); err != nil {
 			return err
 		}
 	case STRUCT:
 		for {
-			b, err := p.p.Next(1) // TType
+			b, err := p.next(1) // TType
 			if err != nil {
 				return err
 			}
@@ -111,7 +108,7 @@ func (p *SkipDecoder) skip(t TType, maxdepth int) error {
 			if tp == STOP {
 				break
 			}
-			if _, err := p.p.Next(2); err != nil { // Field ID
+			if _, err := p.next(2); err != nil { // Field ID
 				return err
 			}
 			if err := p.skip(tp, maxdepth-1); err != nil {
@@ -119,7 +116,7 @@ func (p *SkipDecoder) skip(t TType, maxdepth int) error {
 			}
 		}
 	case MAP:
-		b, err := p.p.Next(6) // 1 byte key TType, 1 byte value TType, 4 bytes Len
+		b, err := p.next(6) // 1 byte key TType, 1 byte value TType, 4 bytes Len
 		if err != nil {
 			return err
 		}
@@ -129,7 +126,7 @@ func (p *SkipDecoder) skip(t TType, maxdepth int) error {
 		}
 		ksz, vsz := int(typeToSize[kt]), int(typeToSize[vt])
 		if ksz > 0 && vsz > 0 {
-			_, err := p.p.Next(int(sz) * (ksz + vsz))
+			_, err := p.next(int(sz) * (ksz + vsz))
 			return err
 		}
 		for i := int32(0); i < sz; i++ {
@@ -141,7 +138,7 @@ func (p *SkipDecoder) skip(t TType, maxdepth int) error {
 			}
 		}
 	case SET, LIST:
-		b, err := p.p.Next(5) // 1 byte value type, 4 bytes Len
+		b, err := p.next(5) // 1 byte value type, 4 bytes Len
 		if err != nil {
 			return err
 		}
@@ -150,7 +147,7 @@ func (p *SkipDecoder) skip(t TType, maxdepth int) error {
 			return errNegativeSize
 		}
 		if vsz := typeToSize[vt]; vsz > 0 {
-			_, err := p.p.Next(int(sz) * int(vsz))
+			_, err := p.next(int(sz) * int(vsz))
 			return err
 		}
 		for i := int32(0); i < sz; i++ {
@@ -162,4 +159,21 @@ func (p *SkipDecoder) skip(t TType, maxdepth int) error {
 		return NewProtocolException(INVALID_DATA, fmt.Sprintf("unknown data type %d", t))
 	}
 	return nil
+}
+
+func (p *SkipDecoder) next(n int) (buf []byte, err error) {
+	if buf, err = p.r.Next(n); err != nil {
+		return
+	}
+	if cap(p.nextBuf)-len(p.nextBuf) < n {
+		var ncap int
+		for ncap = cap(p.nextBuf) * 2; ncap-len(p.nextBuf) < n; ncap *= 2 {
+		}
+		nbs := mcache.Malloc(ncap, ncap)
+		p.pendingBuf = append(p.pendingBuf, p.nextBuf)
+		p.nextBuf = nbs[:len(p.nextBuf)]
+	}
+	cn := copy(p.nextBuf[len(p.nextBuf):cap(p.nextBuf)], buf)
+	p.nextBuf = p.nextBuf[:len(p.nextBuf)+cn]
+	return
 }

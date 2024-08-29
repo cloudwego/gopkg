@@ -17,9 +17,9 @@
 package thrift
 
 import (
-	"bytes"
 	"testing"
 
+	"github.com/cloudwego/gopkg/bufiox"
 	"github.com/stretchr/testify/require"
 )
 
@@ -55,8 +55,7 @@ func TestBinaryReader(t *testing.T) {
 	b = x.AppendDouble(b, 18.5)
 	sz13 := len(b)
 
-	r := NewBinaryReader(bytes.NewReader(b))
-	defer r.Release()
+	r := NewBufferReader(bufiox.NewBytesReader(b))
 	name, mt, seq, err := r.ReadMessageBegin()
 	require.NoError(t, err)
 	require.Equal(t, "hello", name)
@@ -206,8 +205,7 @@ func TestBinaryReaderSkip(t *testing.T) {
 	b = x.AppendFieldStop(b)
 	sz10 := len(b)
 
-	r := NewBinaryReader(bytes.NewReader(b))
-	defer r.Release()
+	r := NewBufferReader(bufiox.NewBytesReader(b))
 
 	err := r.Skip(BYTE) // byte
 	require.NoError(t, err)
@@ -242,6 +240,7 @@ func TestBinaryReaderSkip(t *testing.T) {
 	err = r.Skip(STRUCT) // struct i32, list<i32>
 	require.NoError(t, err)
 	require.Equal(t, int64(sz10), r.Readn())
+	r.Recycle()
 
 	{ // other cases
 		// errDepthLimitExceeded
@@ -249,7 +248,7 @@ func TestBinaryReaderSkip(t *testing.T) {
 		for i := 0; i < defaultRecursionDepth+1; i++ {
 			b = x.AppendFieldBegin(b, STRUCT, 1)
 		}
-		r := NewBinaryReader(bytes.NewReader(b))
+		r := NewBufferReader(bufiox.NewBytesReader(b))
 		err := r.Skip(STRUCT)
 		require.Same(t, errDepthLimitExceeded, err)
 

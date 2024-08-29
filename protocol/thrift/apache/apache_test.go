@@ -18,16 +18,14 @@ package apache
 
 import (
 	"bytes"
-	"encoding/json"
 	"errors"
-	"io"
 	"testing"
 
+	"github.com/cloudwego/gopkg/bufiox"
 	"github.com/stretchr/testify/require"
 )
 
 func TestThriftReadWrite(t *testing.T) {
-
 	v := &TestingWriteRead{Msg: "Hello"}
 
 	err := CheckTStruct(v)
@@ -37,41 +35,56 @@ func TestThriftReadWrite(t *testing.T) {
 	require.NoError(t, err)
 
 	buf := &bytes.Buffer{}
+	bw := bufiox.NewDefaultWriter(buf)
 
-	err = ThriftWrite(buf, v)
+	err = ThriftWrite(bw, v)
 	require.Same(t, err, errThriftWriteNotRegistered)
 
 	RegisterThriftWrite(callThriftWrite)
-	err = ThriftWrite(NewBufferTransport(buf), v) // calls v.Write
+	err = ThriftWrite(bw, v) // calls v.Write
+	require.NoError(t, err)
+	err = bw.Flush()
 	require.NoError(t, err)
 
 	p := &TestingWriteRead{}
 
-	err = ThriftRead(NewBufferTransport(buf), p)
+	br := bufiox.NewDefaultReader(buf)
+
+	err = ThriftRead(br, p)
 	require.Same(t, err, errThriftReadNotRegistered)
 
 	RegisterThriftRead(callThriftRead)
-	err = ThriftRead(NewBufferTransport(buf), p) // calls p.Read
+	err = ThriftRead(br, p) // calls p.Read
 	require.NoError(t, err)
 
 	require.Equal(t, v.Msg, p.Msg)
 }
 
 type TStruct interface { // simulate thrift.TStruct
-	Read(r io.Reader) error
-	Write(w io.Writer) error
+	Read(r bufiox.Reader) error
+	Write(w bufiox.Writer) error
 }
 
 type TestingWriteRead struct {
 	Msg string
 }
 
-func (t *TestingWriteRead) Read(r io.Reader) error {
-	return json.NewDecoder(r).Decode(t)
+func (t *TestingWriteRead) Read(r bufiox.Reader) error {
+	b, err := r.Next(5)
+	if err != nil {
+		return err
+	}
+	t.Msg = string(b)
+	return nil
 }
 
-func (t *TestingWriteRead) Write(w io.Writer) error {
-	return json.NewEncoder(w).Encode(t)
+func (t *TestingWriteRead) Write(w bufiox.Writer) error {
+	b, err := w.Malloc(5)
+	if err != nil {
+		return err
+	}
+	copy(b, t.Msg)
+	return nil
 }
 
 var errNotThriftTStruct = errors.New("errNotThriftTStruct")
@@ -84,7 +97,7 @@ func checkTStruct(v interface{}) error {
 	return nil
 }
 
-func callThriftRead(rw io.ReadWriter, v interface{}) error {
+func callThriftRead(rw bufiox.Reader, v interface{}) error {
 	p, ok := v.(TStruct)
 	if !ok {
 		return errNotThriftTStruct
@@ -92,7 +105,7 @@ func callThriftRead(rw io.ReadWriter, v interface{}) error {
 	return p.Read(rw)
 }
 
-func callThriftWrite(rw io.ReadWriter, v interface{}) error {
+func callThriftWrite(rw bufiox.Writer, v interface{}) error {
 	p, ok := v.(TStruct)
 	if !ok {
 		return errNotThriftTStruct

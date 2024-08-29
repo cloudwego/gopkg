@@ -195,7 +195,7 @@ func (r *DefaultReader) Release(e error) error {
 	if len(r.buf)-r.ri == 0 {
 		// release buf
 		r.maxSizeStats.update(cap(r.buf))
-		if !r.bufReadOnly {
+		if !r.bufReadOnly && cap(r.buf) > 0 {
 			mcache.Free(r.buf)
 		}
 		r.buf = nil
@@ -348,7 +348,9 @@ func (w *DefaultWriter) Flush() (err error) {
 	}
 	w.maxSizeStats.update(cap(w.buf))
 	if !w.disableCache {
-		mcache.Free(w.buf)
+		if cap(w.buf) > 0 {
+			mcache.Free(w.buf)
+		}
 		if w.pendingBuf != nil {
 			for _, buf := range w.pendingBuf {
 				mcache.Free(buf)

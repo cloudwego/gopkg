@@ -22,8 +22,19 @@ import (
 	"math"
 	"unsafe"
 
+	"github.com/bytedance/gopkg/lang/span"
 	"github.com/cloudwego/gopkg/internal/hack"
 )
+
+var (
+	spanCache            = span.NewSpanCache(1024 * 1024)
+	spanCacheEnable bool = false
+)
+
+// SetSpanCache enable/disable binary protocol bytes/string allocator
+func SetSpanCache(enable bool) {
+	spanCacheEnable = enable
+}
 
 var Binary BinaryProtocol
 
@@ -316,8 +327,12 @@ func (p BinaryProtocol) ReadBinary(buf []byte) (b []byte, l int, err error) {
 	if len(buf) < l {
 		return nil, 4, errReadBin
 	}
-	// TODO: use span
-	return []byte(string(buf[4:l])), l, nil
+	if spanCacheEnable {
+		b = spanCache.Copy(buf[4:l])
+	} else {
+		b = []byte(string(buf[4:l]))
+	}
+	return b, l, nil
 }
 
 func (p BinaryProtocol) ReadString(buf []byte) (s string, l int, err error) {
@@ -329,8 +344,13 @@ func (p BinaryProtocol) ReadString(buf []byte) (s string, l int, err error) {
 	if len(buf) < l {
 		return "", 4, errReadStr
 	}
-	// TODO: use span
-	return string(buf[4:l]), l, nil
+	if spanCacheEnable {
+		data := spanCache.Copy(buf[4:l])
+		s = hack.ByteSliceToString(data)
+	} else {
+		s = string(buf[4:l])
+	}
+	return s, l, nil
 }
 
 func (BinaryProtocol) ReadBool(buf []byte) (v bool, l int, err error) {
