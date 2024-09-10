@@ -22,11 +22,11 @@ import (
 	"github.com/bytedance/gopkg/lang/dirtmake"
 )
 
-// NocopyWriteThreshold represents the threshold of using `NocopyWriter` for binary or string
+// nocopyWriteThreshold represents the threshold of using `NocopyWriter` for binary or string
 //
 // It's used by `WriteBinaryNocopy` and `WriteStringNocopy` of `BinaryProtocol`
 // which are relied by kitex tool or thriftgo
-var NocopyWriteThreshold = 4096
+const nocopyWriteThreshold = 4096
 
 // BinaryWriter represents the method used in thrift encoding for nocopy writes
 // It supports netpoll nocopy feature, see: https://github.com/cloudwego/netpoll/blob/develop/nocopy.go
