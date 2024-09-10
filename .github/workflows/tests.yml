@@ -16,9 +16,10 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: ${{ matrix.go }}
+          cache: false # don't use cache for self-hosted runners
 
       - name: Unit Test
-        run: go test -race -covermode=atomic -coverprofile=coverage.out ./...
+        run: go test -race ./...
 
       - name: Benchmark
-        run: go test -bench=. -benchmem -run=none ./...
+        run: go test -bench=. -benchmem -run=none ./... -benchtime=100ms
