@@ -118,7 +118,7 @@ func (BinaryProtocol) WriteBinary(buf, v []byte) int {
 }
 
 func (p BinaryProtocol) WriteBinaryNocopy(buf []byte, w NocopyWriter, v []byte) int {
-	if w == nil || len(buf) < NocopyWriteThreshold {
+	if w == nil || len(v) < nocopyWriteThreshold {
 		return p.WriteBinary(buf, v)
 	}
 	binary.BigEndian.PutUint32(buf, uint32(len(v)))
