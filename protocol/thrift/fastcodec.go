@@ -26,7 +26,7 @@ import (
 //
 // It's used by `WriteBinaryNocopy` and `WriteStringNocopy` of `BinaryProtocol`
 // which are relied by kitex tool or thriftgo
-var NocopyWriteThreshold = 4096
+var nocopyWriteThreshold = 4096
 
 // BinaryWriter represents the method used in thrift encoding for nocopy writes
 // It supports netpoll nocopy feature, see: https://github.com/cloudwego/netpoll/blob/develop/nocopy.go
