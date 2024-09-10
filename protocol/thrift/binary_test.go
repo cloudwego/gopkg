@@ -17,8 +17,12 @@
 package thrift
 
 import (
+	"bytes"
+	"math/rand"
+	"strings"
 	"testing"
 
+	"github.com/cloudwego/gopkg/internal/testutils/netpoll"
 	"github.com/stretchr/testify/require"
 )
 
@@ -415,4 +419,35 @@ func TestBinarySkip(t *testing.T) {
 	// unknown type
 	_, err = Binary.Skip(b, TType(122))
 	require.Error(t, err)
+}
+
+func TestNocopyWrite(t *testing.T) {
+	n := 100
+	// generate strings with the size above or below nocopyWriteThreshold
+	ss := make([]string, n)
+	for i := 0; i < len(ss); i++ {
+		c := string(rune('A' + i%61)) // 'A'(65) - '}"(125)
+		// 50% possibility will larger than nocopyWriteThreshold
+		ss[i] = strings.Repeat(c, 3*nocopyWriteThreshold/4+rand.Intn(nocopyWriteThreshold/2))
+	}
+
+	// generate expected data
+	x := BinaryProtocol{}
+	expectb := make([]byte, 0, n*2*nocopyWriteThreshold)
+	for _, s := range ss {
+		expectb = x.AppendString(expectb, s)
+	}
+
+	// generate testing data
+	w := &netpoll.NetpollDirectWriter{}
+	i := 0
+	b := w.Malloc(len(expectb))
+	for _, s := range ss {
+		i += x.WriteStringNocopy(b[i:], w, s)
+	}
+	b = w.Bytes()
+	wn := w.WriteDirectN()
+	require.True(t, wn > 0 && wn != n, wn)
+	require.Equal(t, len(expectb), len(b))
+	require.True(t, bytes.Equal(expectb, b))
 }
