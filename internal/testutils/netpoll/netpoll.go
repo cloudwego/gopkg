@@ -64,6 +64,7 @@ func (p *NetpollDirectWriter) WriteDirect(b []byte, remainCap int) error {
 	return nil
 }
 
+// WriteDirectN returns how many times WriteDirect called
 func (p *NetpollDirectWriter) WriteDirectN() int {
 	return len(p.wbuf)
 }

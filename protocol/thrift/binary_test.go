@@ -17,8 +17,6 @@
 package thrift
 
 import (
-	"bytes"
-	"math/rand"
 	"strings"
 	"testing"
 
@@ -422,32 +420,24 @@ func TestBinarySkip(t *testing.T) {
 }
 
 func TestNocopyWrite(t *testing.T) {
-	n := 100
-	// generate strings with the size above or below nocopyWriteThreshold
-	ss := make([]string, n)
-	for i := 0; i < len(ss); i++ {
-		c := string(rune('A' + i%61)) // 'A'(65) - '}"(125)
-		// 50% possibility will larger than nocopyWriteThreshold
-		ss[i] = strings.Repeat(c, 3*nocopyWriteThreshold/4+rand.Intn(nocopyWriteThreshold/2))
-	}
+	largestr := strings.Repeat("l", nocopyWriteThreshold)
+	smallstr := strings.Repeat("s", 10)
 
 	// generate expected data
 	x := BinaryProtocol{}
-	expectb := make([]byte, 0, n*2*nocopyWriteThreshold)
-	for _, s := range ss {
-		expectb = x.AppendString(expectb, s)
-	}
+	expectb := make([]byte, 0, 2*x.StringLength(smallstr)+x.StringLength(largestr))
+	expectb = x.AppendString(expectb, smallstr)
+	expectb = x.AppendString(expectb, largestr)
+	expectb = x.AppendString(expectb, smallstr)
 
 	// generate testing data
-	w := &netpoll.NetpollDirectWriter{}
 	i := 0
+	w := &netpoll.NetpollDirectWriter{}
 	b := w.Malloc(len(expectb))
-	for _, s := range ss {
-		i += x.WriteStringNocopy(b[i:], w, s)
-	}
-	b = w.Bytes()
-	wn := w.WriteDirectN()
-	require.True(t, wn > 0 && wn != n, wn)
-	require.Equal(t, len(expectb), len(b))
-	require.True(t, bytes.Equal(expectb, b))
+	i += x.WriteStringNocopy(b[i:], w, smallstr)
+	i += x.WriteStringNocopy(b[i:], w, largestr)
+	i += x.WriteStringNocopy(b[i:], w, smallstr)
+	require.Equal(t, len(expectb)-len(largestr), i) // without len(largestr)
+	require.Equal(t, 1, w.WriteDirectN())
+	require.Equal(t, expectb, w.Bytes())
 }
