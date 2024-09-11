@@ -17,8 +17,10 @@
 package thrift
 
 import (
+	"strings"
 	"testing"
 
+	"github.com/cloudwego/gopkg/internal/testutils/netpoll"
 	"github.com/stretchr/testify/require"
 )
 
@@ -415,4 +417,27 @@ func TestBinarySkip(t *testing.T) {
 	// unknown type
 	_, err = Binary.Skip(b, TType(122))
 	require.Error(t, err)
+}
+
+func TestNocopyWrite(t *testing.T) {
+	largestr := strings.Repeat("l", nocopyWriteThreshold)
+	smallstr := strings.Repeat("s", 10)
+
+	// generate expected data
+	x := BinaryProtocol{}
+	expectb := make([]byte, 0, 2*x.StringLength(smallstr)+x.StringLength(largestr))
+	expectb = x.AppendString(expectb, smallstr)
+	expectb = x.AppendString(expectb, largestr)
+	expectb = x.AppendString(expectb, smallstr)
+
+	// generate testing data
+	i := 0
+	w := &netpoll.NetpollDirectWriter{}
+	b := w.Malloc(len(expectb))
+	i += x.WriteStringNocopy(b[i:], w, smallstr)
+	i += x.WriteStringNocopy(b[i:], w, largestr)
+	i += x.WriteStringNocopy(b[i:], w, smallstr)
+	require.Equal(t, len(expectb)-len(largestr), i) // without len(largestr)
+	require.Equal(t, 1, w.WriteDirectN())
+	require.Equal(t, expectb, w.Bytes())
 }
