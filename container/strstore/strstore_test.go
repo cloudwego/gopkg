@@ -27,9 +27,12 @@ func TestStrStore(t *testing.T) {
 	// test when the pages grow
 	ss := randStrings(50, 1000000)
 	strStore, idxes := New(ss)
+	totalLen := 0
 	for i := 0; i < len(ss); i++ {
 		assert.Equal(t, ss[i], strStore.Get(idxes[i]))
+		totalLen += len(ss[i])
 	}
+	assert.Equal(t, totalLen+strlenSize*len(ss), strStore.Len())
 	s := strStore.Get(-1)
 	assert.Equal(t, "", s)
 	s = strStore.Get(strStore.Len() * 2)
