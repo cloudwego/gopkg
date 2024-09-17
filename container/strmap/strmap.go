@@ -17,6 +17,7 @@
 package strmap
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"sort"
@@ -49,28 +50,77 @@ type mapItem[V any] struct {
 	v    V
 }
 
-// New creates StrMap from map[string]V
-func New[V any](m map[string]V) *StrMap[V] {
+// New creates a StrMap instance,
+func New[V any]() *StrMap[V] {
+	return &StrMap[V]{seed: maphash.MakeSeed()}
+}
+
+// NewFromMap creates StrMap from map
+func NewFromMap[V any](m map[string]V) *StrMap[V] {
+	ret := New[V]()
+	if err := ret.LoadFromMap(m); err != nil {
+		panic(err)
+	}
+	return ret
+}
+
+// NewFromSlice creates StrMap from slices, len(kk) must equal to len(vv)
+func NewFromSlice[V any](kk []string, vv []V) *StrMap[V] {
+	ret := New[V]()
+	if err := ret.LoadFromSlice(kk, vv); err != nil {
+		panic(err)
+	}
+	return ret
+}
+
+// LoadFromMap resets StrMap and loads from map
+func (p *StrMap[V]) LoadFromMap(m map[string]V) error {
+	kk := make([]string, 0, len(m))
+	vv := make([]V, 0, len(m))
+	for k, v := range m {
+		kk = append(kk, k)
+		vv = append(vv, v)
+	}
+	return p.LoadFromSlice(kk, vv)
+}
+
+// LoadFromSlice resets StrMap and loads from slices, len(kk) must equal to len(vv)
+func (m *StrMap[V]) LoadFromSlice(kk []string, vv []V) error {
+	if len(kk) != len(vv) {
+		return errors.New("kv len not match")
+	}
+	m.data = m.data[:0]
+	m.items = m.items[:0]
+	m.hashtable = m.hashtable[:0]
+
 	sz := 0
-	for k := range m {
+	for _, k := range kk {
 		sz += len(k)
 	}
-	b := make([]byte, 0, sz)
-
-	seed := maphash.MakeSeed()
-	items := make([]mapItem[V], 0, len(m))
-	for k, v := range m {
-		if len(k) > math.MaxUint32 {
-			// it doesn't make sense ...
-			panic("key too large")
-		}
-		items = append(items, mapItem[V]{off: len(b), sz: uint32(len(k)), slot: uint32(maphash.String(seed, k)), v: v})
-		b = append(b, k...)
+	if cap(m.data) < sz {
+		m.data = make([]byte, 0, sz)
+	}
+	if cap(m.items) < len(vv) {
+		m.items = make([]mapItem[V], 0, len(vv))
 	}
 
-	ret := &StrMap[V]{data: b, items: items, seed: seed}
-	ret.makeHashtable()
-	return ret
+	for i, k := range kk {
+		if len(k) > math.MaxUint32 {
+			// it doesn't make sense ...
+			return errors.New("key too large")
+		}
+		v := vv[i]
+		m.items = append(m.items,
+			mapItem[V]{
+				off:  len(m.data),
+				sz:   uint32(len(k)),
+				slot: uint32(maphash.String(m.seed, k)),
+				v:    v,
+			})
+		m.data = append(m.data, k...)
+	}
+	m.makeHashtable()
+	return nil
 }
 
 // Len returns the size of map
@@ -93,7 +143,11 @@ func (x itemsBySlot[V]) Swap(i, j int)      { x[i], x[j] = x[j], x[i] }
 
 func (m *StrMap[V]) makeHashtable() {
 	slots := calcHashtableSlots(len(m.items))
-	m.hashtable = make([]int32, slots)
+	if cap(m.hashtable) < int(slots) {
+		m.hashtable = make([]int32, slots)
+	} else {
+		m.hashtable = m.hashtable[:slots]
+	}
 
 	// update `slot` of mapItem to fit the size of hashtable
 	for i := range m.items {
