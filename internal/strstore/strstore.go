@@ -29,9 +29,24 @@ type StrStore struct {
 	buf []byte
 }
 
-// New constructs a StrStore with the input string slice and returns the StrStore and indexes for the following reads.
+// New creates a StrStore instance.
+func New() *StrStore {
+	return &StrStore{}
+}
+
+// NewFromSlice constructs a StrStore with the input string slice and returns the StrStore and indexes for the following reads.
 // It panics if any string in the slice is longer than math.MaxUint32.
-func New(ss []string) (*StrStore, []int) {
+func NewFromSlice(ss []string) (*StrStore, []int) {
+	st := &StrStore{}
+	idxes, err := st.Load(ss)
+	if err != nil {
+		panic(err)
+	}
+	return st, idxes
+}
+
+// Load resets the StrStore and set from input string slices.
+func (s *StrStore) Load(ss []string) ([]int, error) {
 	n := len(ss)
 	totalLen := strlenSize * n
 	for i := 0; i < n; i++ {
@@ -41,16 +56,20 @@ func New(ss []string) (*StrStore, []int) {
 		totalLen += len(ss[i])
 	}
 	idxes := make([]int, n)
-	buf := make([]byte, totalLen)
+	if cap(s.buf) < totalLen {
+		s.buf = make([]byte, totalLen)
+	} else {
+		s.buf = s.buf[:totalLen]
+	}
+
 	offset := 0
 	for i := 0; i < n; i++ {
 		idxes[i] = offset
-		*(*uint32)(unsafe.Pointer(&buf[offset])) = uint32(len(ss[i]))
-		copy(buf[offset+strlenSize:offset+strlenSize+len(ss[i])], ss[i])
+		*(*uint32)(unsafe.Pointer(&s.buf[offset])) = uint32(len(ss[i]))
+		copy(s.buf[offset+strlenSize:offset+strlenSize+len(ss[i])], ss[i])
 		offset += strlenSize + len(ss[i])
 	}
-	st := &StrStore{buf: buf}
-	return st, idxes
+	return idxes, nil
 }
 
 // Get gets the string with the idx.

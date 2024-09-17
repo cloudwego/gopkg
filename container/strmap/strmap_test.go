@@ -52,6 +52,18 @@ func newStdStrMap(ss []string) map[string]uint {
 	return m
 }
 
+// newStdStr2StrMap generates a map with uniq values
+func newStdStr2StrMap(kk, vv []string) map[string]string {
+	if len(kk) != len(vv) {
+		panic("len(kk) != len(vv)")
+	}
+	m := make(map[string]string, len(kk))
+	for i := 0; i < len(kk); i++ {
+		m[kk[i]] = vv[i]
+	}
+	return m
+}
+
 func TestStrMap(t *testing.T) {
 	ss := randStrings(20, 100000)
 	m := newStdStrMap(ss)
@@ -82,6 +94,75 @@ func TestStrMapString(t *testing.T) {
 	sm := NewFromMap(m)
 	t.Log(sm.String())
 	t.Log(sm.debugString())
+}
+
+func TestStr2Str(t *testing.T) {
+	kk := randStrings(20, 100000)
+	vv := randStrings(20, 100000)
+	m := newStdStr2StrMap(kk, vv)
+
+	// from slice
+	ms := NewStr2StrFromSlice(kk, vv)
+	require.Equal(t, len(m), ms.Len())
+	for i, k := range kk {
+		v0 := vv[i]
+		v1, _ := ms.Get(k)
+		require.Equal(t, v0, v1, i)
+	}
+
+	// from map
+	mm := NewStr2StrFromMap(m)
+	require.Equal(t, len(m), mm.Len())
+	for i, k := range kk {
+		v0 := vv[i]
+		v1, _ := mm.Get(k)
+		require.Equal(t, v0, v1, i)
+	}
+}
+
+func TestStr2StrLoad(t *testing.T) {
+	round := 10
+	str2str := NewStr2Str()
+	// from slice
+	for r := 0; r < round; r++ {
+		kk := randStrings(20, 100000)
+		vv := randStrings(20, 100000)
+
+		err := str2str.LoadFromSlice(kk, vv)
+		require.NoError(t, err)
+		for i, k := range kk {
+			v0 := vv[i]
+			v1, _ := str2str.Get(k)
+			require.Equal(t, v0, v1, i)
+		}
+	}
+
+	// from map
+	for r := 0; r < round; r++ {
+		kk := randStrings(20, 100000)
+		vv := randStrings(20, 100000)
+		m := newStdStr2StrMap(kk, vv)
+
+		err := str2str.LoadFromMap(m)
+		require.NoError(t, err)
+		for i, k := range kk {
+			v0 := vv[i]
+			v1, _ := str2str.Get(k)
+			require.Equal(t, v0, v1, i)
+		}
+	}
+
+	// not initialized
+	str2str = &Str2Str{}
+	kk := randStrings(20, 100000)
+	vv := randStrings(20, 100000)
+	err := str2str.LoadFromSlice(kk, vv)
+	require.NoError(t, err)
+	for i, k := range kk {
+		v0 := vv[i]
+		v1, _ := str2str.Get(k)
+		require.Equal(t, v0, v1, i)
+	}
 }
 
 func BenchmarkLoadFromMap(b *testing.B) {
@@ -150,6 +231,39 @@ func BenchmarkGC(b *testing.B) {
 			})
 
 			sm := NewFromMap(m)
+			m = nil
+			runtime.GC()
+
+			b.Run(fmt.Sprintf("new-keysize_%d_n_%d", sz, n), func(b *testing.B) {
+				b.ResetTimer()
+				for i := 0; i < b.N; i++ {
+					runtime.GC()
+				}
+			})
+
+			_ = m // fix lint ineffassign of m = nil
+			runtime.KeepAlive(sm)
+		}
+	}
+}
+
+func BenchmarkStr2StrMapGC(b *testing.B) {
+	sizes := []int{20, 100}
+	nn := []int{100000, 400000}
+
+	for _, n := range nn {
+		for _, sz := range sizes {
+			kk := randStrings(sz, n)
+			vv := randStrings(sz, n)
+			m := newStdStr2StrMap(kk, vv)
+
+			b.Run(fmt.Sprintf("std-keysize_%d_n_%d", sz, n), func(b *testing.B) {
+				for i := 0; i < b.N; i++ {
+					runtime.GC()
+				}
+			})
+
+			sm := NewStr2StrFromMap(m)
 			m = nil
 			runtime.GC()
 
