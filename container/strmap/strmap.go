@@ -25,6 +25,7 @@ import (
 
 	"github.com/cloudwego/gopkg/internal/hack"
 	"github.com/cloudwego/gopkg/internal/hash/maphash"
+	"github.com/cloudwego/gopkg/internal/strstore"
 )
 
 // StrMap represents GC friendly readonly string map implementation.
@@ -218,4 +219,61 @@ func (m *StrMap[V]) debugString() string {
 	}
 	fmt.Fprintf(b, "}(slots=%d, items=%d)", len(m.hashtable), len(m.items))
 	return b.String()
+}
+
+// Str2Str uses StrMap and strstore.StrStore to store map[string]string
+type Str2Str struct {
+	strMap   *StrMap[int]
+	strStore *strstore.StrStore
+}
+
+func NewStr2Str() *Str2Str {
+	return &Str2Str{}
+}
+
+// NewStr2StrFromSlice creates StrMapStr2Str from key, value slices.
+func NewStr2StrFromSlice(kk, vv []string) *Str2Str {
+	m := NewStr2Str()
+	m.LoadFromSlice(kk, vv)
+	return m
+}
+
+// NewStr2StrFromMap creates StrMapStr2Str from map.
+func NewStr2StrFromMap(m map[string]string) *Str2Str {
+	sm := NewStr2Str()
+	sm.LoadFromMap(m)
+	return sm
+}
+
+// LoadFromSlice resets Str2Str and loads from slices.
+func (sm *Str2Str) LoadFromSlice(kk, vv []string) {
+	ss, ids := strstore.New(vv)
+	sm.strStore = ss
+	sm.strMap = NewFromSlice(kk, ids)
+}
+
+// LoadFromMap resets Str2Str and loads from map.
+func (sm *Str2Str) LoadFromMap(m map[string]string) {
+	kk := make([]string, 0, len(m))
+	vv := make([]string, 0, len(m))
+	for k, v := range m {
+		kk = append(kk, k)
+		vv = append(vv, v)
+	}
+	sm.LoadFromSlice(kk, vv)
+}
+
+// Get ...
+func (sm *Str2Str) Get(k string) (string, bool) {
+	if idx, ok := sm.strMap.Get(k); ok {
+		v := sm.strStore.Get(idx)
+		// TODO: any check?
+		return v, true
+	}
+	return "", false
+}
+
+// Len returns the size of map
+func (sm *Str2Str) Len() int {
+	return sm.strMap.Len()
 }
