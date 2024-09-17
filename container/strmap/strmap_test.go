@@ -41,7 +41,7 @@ func randStrings(m, n int) []string {
 // newStdStrMap generates a map with uniq values
 func newStdStrMap(ss []string) map[string]uint {
 	v := uint(1)
-	m := make(map[string]uint)
+	m := make(map[string]uint, len(ss))
 	for _, s := range ss {
 		_, ok := m[s]
 		if !ok {
@@ -55,7 +55,7 @@ func newStdStrMap(ss []string) map[string]uint {
 func TestStrMap(t *testing.T) {
 	ss := randStrings(20, 100000)
 	m := newStdStrMap(ss)
-	sm := New(m)
+	sm := NewFromMap(m)
 	require.Equal(t, len(m), sm.Len())
 	for i, s := range ss {
 		v0 := m[s]
@@ -79,9 +79,36 @@ func TestStrMap(t *testing.T) {
 func TestStrMapString(t *testing.T) {
 	ss := []string{"a", "b", "c"}
 	m := newStdStrMap(ss)
-	sm := New(m)
+	sm := NewFromMap(m)
 	t.Log(sm.String())
 	t.Log(sm.debugString())
+}
+
+func BenchmarkLoadFromMap(b *testing.B) {
+	sz := 50
+	n := 100000
+	ss := randStrings(sz, n)
+	m := newStdStrMap(ss)
+	p := New[uint]()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		p.LoadFromMap(m)
+	}
+}
+
+func BenchmarkLoadFromSlice(b *testing.B) {
+	sz := 50
+	n := 100000
+	kk := randStrings(sz, n)
+	vv := make([]int, n)
+	for i := range vv {
+		vv[i] = i
+	}
+	p := New[int]()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		p.LoadFromSlice(kk, vv)
+	}
 }
 
 func BenchmarkGet(b *testing.B) {
@@ -98,7 +125,7 @@ func BenchmarkGet(b *testing.B) {
 				}
 			})
 			b.Run(fmt.Sprintf("new-keysize_%d_n_%d", sz, n), func(b *testing.B) {
-				sm := New(m)
+				sm := NewFromMap(m)
 				b.ResetTimer()
 				for i := 0; i < b.N; i++ {
 					sm.Get(ss[i%len(ss)])
@@ -122,7 +149,7 @@ func BenchmarkGC(b *testing.B) {
 				}
 			})
 
-			sm := New(m)
+			sm := NewFromMap(m)
 			m = nil
 			runtime.GC()
 
