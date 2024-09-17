@@ -228,39 +228,57 @@ type Str2Str struct {
 }
 
 func NewStr2Str() *Str2Str {
-	return &Str2Str{}
+	return &Str2Str{
+		strMap:   New[int](),
+		strStore: strstore.New(),
+	}
 }
 
 // NewStr2StrFromSlice creates StrMapStr2Str from key, value slices.
 func NewStr2StrFromSlice(kk, vv []string) *Str2Str {
 	m := NewStr2Str()
-	m.LoadFromSlice(kk, vv)
+	if err := m.LoadFromSlice(kk, vv); err != nil {
+		panic(err)
+	}
 	return m
 }
 
 // NewStr2StrFromMap creates StrMapStr2Str from map.
 func NewStr2StrFromMap(m map[string]string) *Str2Str {
 	sm := NewStr2Str()
-	sm.LoadFromMap(m)
+	if err := sm.LoadFromMap(m); err != nil {
+		panic(err)
+	}
 	return sm
 }
 
 // LoadFromSlice resets Str2Str and loads from slices.
-func (sm *Str2Str) LoadFromSlice(kk, vv []string) {
-	ss, ids := strstore.New(vv)
-	sm.strStore = ss
-	sm.strMap = NewFromSlice(kk, ids)
+func (sm *Str2Str) LoadFromSlice(kk, vv []string) error {
+	if len(kk) != len(vv) {
+		return errors.New("kv len not match")
+	}
+	if sm.strStore == nil {
+		sm.strStore = strstore.New()
+	}
+	ids, err := sm.strStore.Load(vv)
+	if err != nil {
+		return err
+	}
+	if sm.strMap == nil {
+		sm.strMap = New[int]()
+	}
+	return sm.strMap.LoadFromSlice(kk, ids)
 }
 
 // LoadFromMap resets Str2Str and loads from map.
-func (sm *Str2Str) LoadFromMap(m map[string]string) {
+func (sm *Str2Str) LoadFromMap(m map[string]string) error {
 	kk := make([]string, 0, len(m))
 	vv := make([]string, 0, len(m))
 	for k, v := range m {
 		kk = append(kk, k)
 		vv = append(vv, v)
 	}
-	sm.LoadFromSlice(kk, vv)
+	return sm.LoadFromSlice(kk, vv)
 }
 
 // Get ...

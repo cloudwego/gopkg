@@ -96,7 +96,7 @@ func TestStrMapString(t *testing.T) {
 	t.Log(sm.debugString())
 }
 
-func TestStrMapStr(t *testing.T) {
+func TestStr2Str(t *testing.T) {
 	kk := randStrings(20, 100000)
 	vv := randStrings(20, 100000)
 	m := newStdStr2StrMap(kk, vv)
@@ -116,6 +116,51 @@ func TestStrMapStr(t *testing.T) {
 	for i, k := range kk {
 		v0 := vv[i]
 		v1, _ := mm.Get(k)
+		require.Equal(t, v0, v1, i)
+	}
+}
+
+func TestStr2StrLoad(t *testing.T) {
+	round := 10
+	str2str := NewStr2Str()
+	// from slice
+	for r := 0; r < round; r++ {
+		kk := randStrings(20, 100000)
+		vv := randStrings(20, 100000)
+
+		err := str2str.LoadFromSlice(kk, vv)
+		require.NoError(t, err)
+		for i, k := range kk {
+			v0 := vv[i]
+			v1, _ := str2str.Get(k)
+			require.Equal(t, v0, v1, i)
+		}
+	}
+
+	// from map
+	for r := 0; r < round; r++ {
+		kk := randStrings(20, 100000)
+		vv := randStrings(20, 100000)
+		m := newStdStr2StrMap(kk, vv)
+
+		err := str2str.LoadFromMap(m)
+		require.NoError(t, err)
+		for i, k := range kk {
+			v0 := vv[i]
+			v1, _ := str2str.Get(k)
+			require.Equal(t, v0, v1, i)
+		}
+	}
+
+	// not initialized
+	str2str = &Str2Str{}
+	kk := randStrings(20, 100000)
+	vv := randStrings(20, 100000)
+	err := str2str.LoadFromSlice(kk, vv)
+	require.NoError(t, err)
+	for i, k := range kk {
+		v0 := vv[i]
+		v1, _ := str2str.Get(k)
 		require.Equal(t, v0, v1, i)
 	}
 }

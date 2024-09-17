@@ -26,7 +26,7 @@ import (
 func TestStrStore(t *testing.T) {
 	// test when the pages grow
 	ss := randStrings(50, 1000000)
-	strStore, idxes := New(ss)
+	strStore, idxes := NewFromSlice(ss)
 	totalLen := 0
 	for i := 0; i < len(ss); i++ {
 		assert.Equal(t, ss[i], strStore.Get(idxes[i]))
@@ -39,9 +39,22 @@ func TestStrStore(t *testing.T) {
 	assert.Equal(t, "", s)
 }
 
+func TestStrStoreLoad(t *testing.T) {
+	rounds := 10
+	strStore := New()
+	for r := 0; r < rounds; r++ {
+		ss := randStrings(50, 100000)
+		idxes, err := strStore.Load(ss)
+		assert.Nil(t, err)
+		for i, s := range ss {
+			assert.Equal(t, s, strStore.Get(idxes[i]))
+		}
+	}
+}
+
 func BenchmarkStrStoreGetSet(b *testing.B) {
 	ss := randStrings(50, 1000000)
-	strStore, idxes := New(ss)
+	strStore, idxes := NewFromSlice(ss)
 	strSlice := make([]string, 0, len(ss))
 	for i := 0; i < len(ss); i++ {
 		strSlice = append(strSlice, ss[i])
@@ -64,9 +77,18 @@ func BenchmarkStrStoreGetSet(b *testing.B) {
 	})
 }
 
+func BenchmarkStrStoreLoad(b *testing.B) {
+	ss := randStrings(50, 1000000)
+	strStore := New()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		strStore.Load(ss)
+	}
+}
+
 func BenchmarkStrStoreGC(b *testing.B) {
 	ss := randStrings(50, 1000000)
-	strStore, idxes := New(ss)
+	strStore, idxes := NewFromSlice(ss)
 	_ = ss
 	runtime.GC()
 	b.ResetTimer()
