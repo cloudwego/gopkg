@@ -76,6 +76,7 @@ const (
 type HeaderFlags uint16
 
 const (
+	HeaderFlagsStreaming        HeaderFlags = 0b0000_0000_0000_0010
 	HeaderFlagSupportOutOfOrder HeaderFlags = 0x01
 	HeaderFlagDuplexReverse     HeaderFlags = 0x08
 	HeaderFlagSASL              HeaderFlags = 0x10
@@ -90,6 +91,8 @@ const (
 	ProtocolIDThriftCompact   ProtocolID = 0x02 // Kitex not support
 	ProtocolIDThriftCompactV2 ProtocolID = 0x03 // Kitex not support
 	ProtocolIDKitexProtobuf   ProtocolID = 0x04
+	ProtocolIDThriftStruct    ProtocolID = 0x10 // TTHeader Streaming: only thrift struct encoded, no magic
+	ProtocolIDProtobufStruct  ProtocolID = 0x11 // TTHeader Streaming: only protobuf struct encoded, no magic
 	ProtocolIDDefault                    = ProtocolIDThriftBinary
 )
 
@@ -100,6 +103,14 @@ const (
 	InfoIDKeyValue    InfoIDType = 0x01
 	InfoIDIntKeyValue InfoIDType = 0x10
 	InfoIDACLToken    InfoIDType = 0x11
+)
+
+const (
+	FrameTypeMeta    = "1"
+	FrameTypeHeader  = "2"
+	FrameTypeData    = "3"
+	FrameTypeTrailer = "4"
+	FrameTypeInvalid = ""
 )
 
 // EncodeParam is used to set up params to encode ttheader.
