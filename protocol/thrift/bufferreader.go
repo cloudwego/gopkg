@@ -148,6 +148,9 @@ func (r *BufferReader) ReadBinary() (b []byte, err error) {
 	if err != nil {
 		return nil, err
 	}
+	if sz < 0 {
+		return nil, errNegativeSize
+	}
 	b = dirtmake.Bytes(int(sz), int(sz))
 	_, err = r.readBinary(b)
 	return

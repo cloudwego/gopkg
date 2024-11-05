@@ -323,6 +323,9 @@ func (p BinaryProtocol) ReadBinary(buf []byte) (b []byte, l int, err error) {
 	if err != nil {
 		return nil, 0, errReadBin
 	}
+	if sz < 0 {
+		return nil, 0, errNegativeSize
+	}
 	l = 4 + int(sz)
 	if len(buf) < l {
 		return nil, 4, errReadBin
@@ -339,6 +342,9 @@ func (p BinaryProtocol) ReadString(buf []byte) (s string, l int, err error) {
 	sz, _, err := p.ReadI32(buf)
 	if err != nil {
 		return "", 0, errReadStr
+	}
+	if sz < 0 {
+		return "", 0, errNegativeSize
 	}
 	l = 4 + int(sz)
 	if len(buf) < l {
