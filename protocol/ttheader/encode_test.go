@@ -116,6 +116,35 @@ func TestEncode(t *testing.T) {
 	checkParamEqual(t, encodeParam, decodeParam, headerLen, 0)
 }
 
+func TestEncodeStreamingFrame(t *testing.T) {
+	seqId++
+	encodeParam := EncodeParam{
+		Flags:      HeaderFlagsStreaming,
+		SeqID:      seqId,
+		ProtocolID: ProtocolIDThriftStruct,
+		IntInfo: map[uint16]string{
+			ToService: "to.service",
+			ToCluster: "to.cluster",
+			ToMethod:  "method",
+			LogID:     "xxxxxxxxx",
+		},
+		StrInfo: map[string]string{
+			HeaderIDLServiceName: "a.b.c",
+			HeaderTransToIDC:     "to_idc",
+		},
+	}
+	buf, err := EncodeToBytes(context.Background(), encodeParam)
+	if err != nil {
+		t.Fatalf("encode to bytes failed, %s", err.Error())
+	}
+	binary.BigEndian.PutUint32(buf, uint32(len(buf)-4))
+	decodeParam, err := DecodeFromBytes(context.Background(), buf)
+	if err != nil {
+		t.Fatalf("encode to bytes failed, %s", err.Error())
+	}
+	checkParamEqual(t, encodeParam, decodeParam, len(buf), 0)
+}
+
 func checkParamEqual(t *testing.T, encodeParam EncodeParam, decodeParam DecodeParam, headerLen, payloadLen int) {
 	if decodeParam.Flags != encodeParam.Flags {
 		t.Fatalf("encode to bytes failed, flags not equal")
