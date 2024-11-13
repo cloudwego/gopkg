@@ -17,7 +17,6 @@ package bufiox
 import (
 	"errors"
 	"io"
-	"sync"
 
 	"github.com/bytedance/gopkg/lang/dirtmake"
 	"github.com/bytedance/gopkg/lang/mcache"
@@ -44,30 +43,18 @@ const (
 )
 
 var errNegativeCount = errors.New("bufiox: negative count")
-var defaultReaderPool sync.Pool
-var bytesReaderPool sync.Pool
 
 // NewDefaultReader returns a new DefaultReader that reads from r.
-func NewDefaultReader(rd io.Reader) (r *DefaultReader) {
-	v := defaultReaderPool.Get()
-	if v == nil {
-		r = &DefaultReader{}
-	} else {
-		r = v.(*DefaultReader)
-	}
+func NewDefaultReader(rd io.Reader) *DefaultReader {
+	r := &DefaultReader{}
 	r.reset(rd, nil)
 	return r
 }
 
 // NewBytesReader returns a new DefaultReader that reads from buf[:len(buf)].
 // Its operation on buf is read-only.
-func NewBytesReader(buf []byte) (r *BytesReader) {
-	v := bytesReaderPool.Get()
-	if v == nil {
-		r = &BytesReader{}
-	} else {
-		r = v.(*BytesReader)
-	}
+func NewBytesReader(buf []byte) *BytesReader {
+	r := &BytesReader{}
 	r.reset(r.fakedIOReader, buf)
 	return r
 }
@@ -75,12 +62,6 @@ func NewBytesReader(buf []byte) (r *BytesReader) {
 type BytesReader struct {
 	DefaultReader
 	fakedIOReader fakeIOReader
-}
-
-func (r *BytesReader) Release(e error) error {
-	err := r.DefaultReader.Release(e)
-	bytesReaderPool.Put(r)
-	return err
 }
 
 func (r *DefaultReader) reset(rd io.Reader, buf []byte) {
@@ -227,8 +208,6 @@ func (r *DefaultReader) Release(e error) error {
 		}
 	}
 	r.ri = 0
-	r.err = nil
-	defaultReaderPool.Put(r)
 	return nil
 }
 
