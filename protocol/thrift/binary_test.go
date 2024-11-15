@@ -428,6 +428,7 @@ func TestNocopyWrite(t *testing.T) {
 	expectb := make([]byte, 0, 2*x.StringLength(smallstr)+x.StringLength(largestr))
 	expectb = x.AppendString(expectb, smallstr)
 	expectb = x.AppendString(expectb, largestr)
+	expectb = x.AppendString(expectb, largestr)
 	expectb = x.AppendString(expectb, smallstr)
 
 	// generate testing data
@@ -436,8 +437,26 @@ func TestNocopyWrite(t *testing.T) {
 	b := w.Malloc(len(expectb))
 	i += x.WriteStringNocopy(b[i:], w, smallstr)
 	i += x.WriteStringNocopy(b[i:], w, largestr)
+	i += x.WriteBinaryNocopy(b[i:], w, []byte(largestr))
 	i += x.WriteStringNocopy(b[i:], w, smallstr)
-	require.Equal(t, len(expectb)-len(largestr), i) // without len(largestr)
-	require.Equal(t, 1, w.WriteDirectN())
+	require.Equal(t, len(expectb)-i, 2*len(largestr)) // without 2*len(largestr)
+	require.Equal(t, 2, w.WriteDirectN())
 	require.Equal(t, expectb, w.Bytes())
+}
+
+func BenchmarkWriteString(b *testing.B) {
+	smallstr := "helloworld"
+	buf := make([]byte, 4+len(smallstr))
+	x := BinaryProtocol{}
+
+	b.Run("WriteString", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			x.WriteString(buf, smallstr)
+		}
+	})
+	b.Run("WriteStringNoCopy", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			x.WriteStringNocopy(buf, nil, smallstr)
+		}
+	})
 }

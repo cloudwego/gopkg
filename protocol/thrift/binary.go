@@ -132,7 +132,12 @@ func (BinaryProtocol) WriteString(buf []byte, v string) int {
 }
 
 func (p BinaryProtocol) WriteStringNocopy(buf []byte, w NocopyWriter, v string) int {
-	return p.WriteBinaryNocopy(buf, w, hack.StringToByteSlice(v))
+	if w == nil || len(v) < nocopyWriteThreshold {
+		return p.WriteString(buf, v)
+	}
+	binary.BigEndian.PutUint32(buf, uint32(len(v)))
+	_ = w.WriteDirect(hack.StringToByteSlice(v), len(buf[4:])) // always err == nil ?
+	return 4
 }
 
 // Append methods
