@@ -31,3 +31,8 @@ output/*
 # Go workspace file
 go.work
 go.work.sum
+
+
+# benchmark comparision
+old.txt
+new.txt
