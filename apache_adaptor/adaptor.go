@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package bridge
+package apache_adaptor
 
 import (
 	"fmt"
@@ -24,7 +24,46 @@ import (
 	"github.com/cloudwego/gopkg/protocol/thrift"
 )
 
-func ApacheReadBridge(iprot interface{}, readFunc func(b []byte) (int, error)) error {
+type ByteBuffer interface {
+	// Next reads the next n bytes sequentially and returns the original buffer.
+	Next(n int) (p []byte, err error)
+
+	// ReadableLen returns the total length of readable buffer.
+	// Return: -1 means unreadable.
+	ReadableLen() (n int)
+}
+
+type nextReader struct {
+	nx ByteBuffer
+}
+
+func (nr nextReader) Read(p []byte) (n int, err error) {
+	readable := nr.nx.ReadableLen()
+	if readable == -1 {
+		return 0, err
+	}
+	if readable > len(p) {
+		readable = len(p)
+	}
+	data, err := nr.nx.Next(readable)
+	if err != nil {
+		return -1, err
+	}
+	copy(p, data)
+	return readable, nil
+}
+
+func next2Reader(n ByteBuffer) io.Reader {
+	return &nextReader{nx: n}
+}
+
+func AdaptRead(iprot interface{}, readFunc func(buf []byte) (int, error)) error {
+	// 通过过渡手段先让用户的 Apache Codec 变成冷门路径
+
+	// todo
+	// 先给 kitex 新版本 TProtocol 补全接口
+	// 尝试类型断言（对下一个新版本有效）
+
 	var br bufiox.Reader
 	fieldNames := []string{"br", "trans"}
 	for _, fn := range fieldNames {
@@ -36,8 +75,11 @@ func ApacheReadBridge(iprot interface{}, readFunc func(b []byte) (int, error)) e
 			switch r := reader.(type) {
 			case bufiox.Reader:
 				br = r
-			case io.Reader:
-				br = bufiox.NewDefaultReader(r)
+			// case io.Reader:
+			//	br = bufiox.NewDefaultReader(r)
+			case ByteBuffer:
+				rd := next2Reader(r)
+				br = bufiox.NewDefaultReader(rd)
 			default:
 				return fmt.Errorf("reader not ok")
 			}
@@ -55,7 +97,7 @@ func ApacheReadBridge(iprot interface{}, readFunc func(b []byte) (int, error)) e
 	return err
 }
 
-func ApacheWriteBridge(oprot interface{}, bufFunc func() []byte) error {
+func AdaptWrite(oprot interface{}, writeFunc func() []byte) error {
 	var bw bufiox.Writer
 	fieldNames := []string{"bw", "trans"}
 	for _, fn := range fieldNames {
@@ -78,7 +120,8 @@ func ApacheWriteBridge(oprot interface{}, bufFunc func() []byte) error {
 	if bw == nil {
 		return fmt.Errorf("no available field for writer")
 	}
-	_, err := bw.WriteBinary(bufFunc())
+	buf := writeFunc()
+	_, err := bw.WriteBinary(buf)
 	if err != nil {
 		return err
 	}
