@@ -94,6 +94,7 @@ func Decode(ctx context.Context, in bufiox.Reader) (param DecodeParam, err error
 	if headerInfo, err = in.Next(int(headerInfoSize)); err != nil {
 		return
 	}
+	param.ProtocolID = ProtocolID(headerInfo[0])
 	if err = checkProtocolID(headerInfo[0]); err != nil {
 		return
 	}
@@ -245,6 +246,8 @@ func checkProtocolID(protoID uint8) error {
 	case uint8(ProtocolIDKitexProtobuf):
 	case uint8(ProtocolIDThriftCompactV2):
 		// just for compatibility
+	case uint8(ProtocolIDThriftStruct):
+	case uint8(ProtocolIDProtobufStruct):
 	default:
 		return fmt.Errorf("unsupported ProtocolID[%d]", protoID)
 	}
