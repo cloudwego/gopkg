@@ -24,6 +24,11 @@ import (
 	"github.com/cloudwego/gopkg/protocol/thrift"
 )
 
+type bufioxReaderWriter interface {
+	GetBufioxReader() bufiox.Reader
+	GetBufioxWriter() bufiox.Writer
+}
+
 type ByteBuffer interface {
 	// Next reads the next n bytes sequentially and returns the original buffer.
 	Next(n int) (p []byte, err error)
@@ -58,32 +63,28 @@ func next2Reader(n ByteBuffer) io.Reader {
 }
 
 func AdaptRead(iprot interface{}, readFunc func(buf []byte) (int, error)) error {
-	// 通过过渡手段先让用户的 Apache Codec 变成冷门路径
-
-	// todo
-	// 先给 kitex 新版本 TProtocol 补全接口
-	// 尝试类型断言（对下一个新版本有效）
-
 	var br bufiox.Reader
-	fieldNames := []string{"br", "trans"}
-	for _, fn := range fieldNames {
-		reader, exist, err := getUnexportField(iprot, fn)
-		if err != nil {
-			return err
-		}
-		if exist {
-			switch r := reader.(type) {
-			case bufiox.Reader:
-				br = r
-			// case io.Reader:
-			//	br = bufiox.NewDefaultReader(r)
-			case ByteBuffer:
-				rd := next2Reader(r)
-				br = bufiox.NewDefaultReader(rd)
-			default:
-				return fmt.Errorf("reader not ok")
+	if bp, ok := iprot.(bufioxReaderWriter); ok {
+		br = bp.GetBufioxReader()
+	} else {
+		fieldNames := []string{"br", "trans"}
+		for _, fn := range fieldNames {
+			reader, exist, err := getUnexportField(iprot, fn)
+			if err != nil {
+				return err
 			}
-			break
+			if exist {
+				switch r := reader.(type) {
+				case bufiox.Reader:
+					br = r
+				case ByteBuffer:
+					rd := next2Reader(r)
+					br = bufiox.NewDefaultReader(rd)
+				default:
+					return fmt.Errorf("reader not ok")
+				}
+				break
+			}
 		}
 	}
 	if br == nil {
@@ -99,22 +100,26 @@ func AdaptRead(iprot interface{}, readFunc func(buf []byte) (int, error)) error 
 
 func AdaptWrite(oprot interface{}, writeFunc func() []byte) error {
 	var bw bufiox.Writer
-	fieldNames := []string{"bw", "trans"}
-	for _, fn := range fieldNames {
-		writer, exist, err := getUnexportField(oprot, fn)
-		if err != nil {
-			return err
-		}
-		if exist {
-			switch w := writer.(type) {
-			case bufiox.Writer:
-				bw = w
-			case io.Writer:
-				bw = bufiox.NewDefaultWriter(w)
-			default:
-				return fmt.Errorf("writer type not ok")
+	if bp, ok := oprot.(bufioxReaderWriter); ok {
+		bw = bp.GetBufioxWriter()
+	} else {
+		fieldNames := []string{"bw", "trans"}
+		for _, fn := range fieldNames {
+			writer, exist, err := getUnexportField(oprot, fn)
+			if err != nil {
+				return err
 			}
-			break
+			if exist {
+				switch w := writer.(type) {
+				case bufiox.Writer:
+					bw = w
+				case io.Writer:
+					bw = bufiox.NewDefaultWriter(w)
+				default:
+					return fmt.Errorf("writer type not ok")
+				}
+				break
+			}
 		}
 	}
 	if bw == nil {
