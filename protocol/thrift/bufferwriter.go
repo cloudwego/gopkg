@@ -22,7 +22,7 @@ import (
 	"sync"
 
 	"github.com/cloudwego/gopkg/bufiox"
-	"github.com/cloudwego/gopkg/internal/hack"
+	"github.com/cloudwego/gopkg/unsafex"
 )
 
 type BufferWriter struct {
@@ -117,7 +117,7 @@ func (w *BufferWriter) WriteBinary(v []byte) error {
 }
 
 func (w *BufferWriter) WriteString(v string) error {
-	return w.WriteBinary(hack.StringToByteSlice(v))
+	return w.WriteBinary(unsafex.StringToBinary(v))
 }
 
 func (w *BufferWriter) WriteBool(v bool) error {

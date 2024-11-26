@@ -1,3 +1,5 @@
+//go:build !go1.21
+
 /*
  * Copyright 2024 CloudWeGo Authors
  *
@@ -14,9 +16,14 @@
  * limitations under the License.
  */
 
-package hack
+package unsafex
 
 import "unsafe"
+
+// BinaryToString converts []byte to string without copy
+func BinaryToString(b []byte) string {
+	return *(*string)(unsafe.Pointer(&b))
+}
 
 type sliceHeader struct {
 	Data uintptr
@@ -24,23 +31,9 @@ type sliceHeader struct {
 	Cap  int
 }
 
-type strHeader struct {
-	Data uintptr
-	Len  int
-}
-
-// ByteSliceToString converts []byte to string without copy
-func ByteSliceToString(b []byte) string {
-	return *(*string)(unsafe.Pointer(&b))
-}
-
-// StringToByteSlice converts string to []byte without copy
-func StringToByteSlice(s string) []byte {
-	var v []byte
-	p0 := (*sliceHeader)(unsafe.Pointer(&v))
-	p1 := (*strHeader)(unsafe.Pointer(&s))
-	p0.Data = p1.Data
-	p0.Len = p1.Len
-	p0.Cap = p1.Len
-	return v
+// StringToBinary converts string to []byte without copy
+func StringToBinary(s string) (b []byte) {
+	*(*string)(unsafe.Pointer(&b)) = s
+	(*sliceHeader)(unsafe.Pointer(&b)).Cap = len(s)
+	return
 }
