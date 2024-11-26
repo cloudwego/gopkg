@@ -82,7 +82,7 @@ func BenchmarkStrStoreLoad(b *testing.B) {
 	strStore := New()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		strStore.Load(ss)
+		_, _ = strStore.Load(ss)
 	}
 }
 

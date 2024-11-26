@@ -28,7 +28,7 @@ import (
 
 func randStrings(m, n int) []string {
 	b := make([]byte, m*n)
-	rand.Read(b)
+	_, _ = rand.Read(b)
 	ret := make([]string, 0, n)
 	for i := 0; i < n; i++ {
 		s := b[m*i:]
@@ -121,10 +121,9 @@ func TestStr2Str(t *testing.T) {
 }
 
 func TestStr2StrLoad(t *testing.T) {
-	round := 10
 	str2str := NewStr2Str()
 	// from slice
-	for r := 0; r < round; r++ {
+	{
 		kk := randStrings(20, 100000)
 		vv := randStrings(20, 100000)
 
@@ -138,7 +137,7 @@ func TestStr2StrLoad(t *testing.T) {
 	}
 
 	// from map
-	for r := 0; r < round; r++ {
+	{
 		kk := randStrings(20, 100000)
 		vv := randStrings(20, 100000)
 		m := newStdStr2StrMap(kk, vv)
@@ -173,7 +172,7 @@ func BenchmarkLoadFromMap(b *testing.B) {
 	p := New[uint]()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		p.LoadFromMap(m)
+		_ = p.LoadFromMap(m)
 	}
 }
 
@@ -188,7 +187,7 @@ func BenchmarkLoadFromSlice(b *testing.B) {
 	p := New[int]()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		p.LoadFromSlice(kk, vv)
+		_ = p.LoadFromSlice(kk, vv)
 	}
 }
 

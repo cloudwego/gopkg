@@ -27,11 +27,3 @@ func p2i32(p unsafe.Pointer) int32 {
 		uint32(*(*byte)(unsafe.Add(p, 1)))<<16 |
 		uint32(*(*byte)(p))<<24)
 }
-
-type nextIface interface {
-	Next(n int) ([]byte, error)
-}
-
-type discardIface interface {
-	Discard(n int) (int, error)
-}

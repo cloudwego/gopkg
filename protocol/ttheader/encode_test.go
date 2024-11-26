@@ -78,7 +78,7 @@ func TestEncode(t *testing.T) {
 			t.Errorf("decode failed, %s", err.Error())
 			return
 		}
-		br.Release(nil)
+		_ = br.Release(nil)
 		l.Close()
 		conn.Close()
 	}()

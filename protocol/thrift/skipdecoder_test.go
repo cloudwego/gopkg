@@ -229,7 +229,7 @@ func BenchmarkSkipDecoder(b *testing.B) {
 				b.Fatal("bytes not equal")
 			}
 			sr.Release()
-			bufReader.Release(nil)
+			_ = bufReader.Release(nil)
 		}
 	})
 }

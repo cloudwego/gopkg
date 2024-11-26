@@ -30,12 +30,12 @@ func TestBinary(t *testing.T) {
 
 		b := Binary.AppendBool([]byte(nil), true)
 		b = Binary.AppendBool(b, false)
-		require.Equal(t, int(sz), len(b))
+		require.Equal(t, sz, len(b))
 
 		b1 := make([]byte, sz)
 		l := Binary.WriteBool(b1, true)
 		l += Binary.WriteBool(b1[l:], false)
-		require.Equal(t, int(sz), l)
+		require.Equal(t, sz, l)
 		require.Equal(t, b, b1)
 
 		v, l, _ := Binary.ReadBool(b)
@@ -53,11 +53,11 @@ func TestBinary(t *testing.T) {
 		sz := Binary.ByteLength()
 
 		b := Binary.AppendByte([]byte(nil), 1)
-		require.Equal(t, int(sz), len(b))
+		require.Equal(t, sz, len(b))
 
 		b1 := make([]byte, sz)
 		l := Binary.WriteByte(b1, 1)
-		require.Equal(t, int(sz), l)
+		require.Equal(t, sz, l)
 		require.Equal(t, b, b1)
 
 		v, l, _ := Binary.ReadByte(b)
@@ -73,11 +73,11 @@ func TestBinary(t *testing.T) {
 		sz := Binary.I16Length()
 
 		b := Binary.AppendI16([]byte(nil), testv)
-		require.Equal(t, int(sz), len(b))
+		require.Equal(t, sz, len(b))
 
 		b1 := make([]byte, sz)
 		l := Binary.WriteI16(b1, testv)
-		require.Equal(t, int(sz), l)
+		require.Equal(t, sz, l)
 		require.Equal(t, b, b1)
 
 		v, l, _ := Binary.ReadI16(b)
@@ -93,11 +93,11 @@ func TestBinary(t *testing.T) {
 		sz := Binary.I32Length()
 
 		b := Binary.AppendI32([]byte(nil), testv)
-		require.Equal(t, int(sz), len(b))
+		require.Equal(t, sz, len(b))
 
 		b1 := make([]byte, sz)
 		l := Binary.WriteI32(b1, testv)
-		require.Equal(t, int(sz), l)
+		require.Equal(t, sz, l)
 		require.Equal(t, b, b1)
 
 		v, l, _ := Binary.ReadI32(b)
@@ -113,11 +113,11 @@ func TestBinary(t *testing.T) {
 		sz := Binary.I64Length()
 
 		b := Binary.AppendI64([]byte(nil), testv)
-		require.Equal(t, int(sz), len(b))
+		require.Equal(t, sz, len(b))
 
 		b1 := make([]byte, sz)
 		l := Binary.WriteI64(b1, testv)
-		require.Equal(t, int(sz), l)
+		require.Equal(t, sz, l)
 		require.Equal(t, b, b1)
 
 		v, l, _ := Binary.ReadI64(b)
@@ -133,11 +133,11 @@ func TestBinary(t *testing.T) {
 		sz := Binary.DoubleLength()
 
 		b := Binary.AppendDouble([]byte(nil), testv)
-		require.Equal(t, int(sz), len(b))
+		require.Equal(t, sz, len(b))
 
 		b1 := make([]byte, sz)
 		l := Binary.WriteDouble(b1, testv)
-		require.Equal(t, int(sz), l)
+		require.Equal(t, sz, l)
 		require.Equal(t, b, b1)
 
 		v, l, _ := Binary.ReadDouble(b)
@@ -153,11 +153,11 @@ func TestBinary(t *testing.T) {
 		sz := Binary.BinaryLength(testv)
 
 		b := Binary.AppendBinary([]byte(nil), testv)
-		require.Equal(t, int(sz), len(b))
+		require.Equal(t, sz, len(b))
 
 		b1 := make([]byte, sz)
 		l := Binary.WriteBinaryNocopy(b1, nil, testv)
-		require.Equal(t, int(sz), l)
+		require.Equal(t, sz, l)
 		require.Equal(t, b, b1)
 
 		v, l, _ := Binary.ReadBinary(b)
@@ -173,11 +173,11 @@ func TestBinary(t *testing.T) {
 		sz := Binary.StringLength(testv)
 
 		b := Binary.AppendString([]byte(nil), testv)
-		require.Equal(t, int(sz), len(b))
+		require.Equal(t, sz, len(b))
 
 		b1 := make([]byte, sz)
 		l := Binary.WriteStringNocopy(b1, nil, testv)
-		require.Equal(t, int(sz), l)
+		require.Equal(t, sz, l)
 		require.Equal(t, b, b1)
 
 		v, l, _ := Binary.ReadString(b)
@@ -193,11 +193,11 @@ func TestBinary(t *testing.T) {
 		sz := Binary.MessageBeginLength(testname)
 
 		b := Binary.AppendMessageBegin([]byte(nil), testname, testtyp, testseq)
-		require.Equal(t, int(sz), len(b))
+		require.Equal(t, sz, len(b))
 
 		b1 := make([]byte, sz)
 		l := Binary.WriteMessageBegin(b1, testname, testtyp, testseq)
-		require.Equal(t, int(sz), l)
+		require.Equal(t, sz, l)
 		require.Equal(t, b, b1)
 
 		name, typ, seq, l, _ := Binary.ReadMessageBegin(b)
@@ -216,12 +216,12 @@ func TestBinary(t *testing.T) {
 
 		b := Binary.AppendFieldBegin([]byte(nil), testtyp, testfid)
 		b = Binary.AppendFieldStop(b)
-		require.Equal(t, int(sz), len(b))
+		require.Equal(t, sz, len(b))
 
 		b1 := make([]byte, sz)
 		l := Binary.WriteFieldBegin(b1, testtyp, testfid)
 		l += Binary.WriteFieldStop(b1[l:])
-		require.Equal(t, int(sz), l)
+		require.Equal(t, sz, l)
 		require.Equal(t, b, b1)
 
 		typ, fid, l, _ := Binary.ReadFieldBegin(b)
@@ -243,11 +243,11 @@ func TestBinary(t *testing.T) {
 		sz := Binary.MapBeginLength()
 
 		b := Binary.AppendMapBegin([]byte(nil), testkt, testvt, testsize)
-		require.Equal(t, int(sz), len(b))
+		require.Equal(t, sz, len(b))
 
 		b1 := make([]byte, sz)
 		l := Binary.WriteMapBegin(b1, testkt, testvt, testsize)
-		require.Equal(t, int(sz), l)
+		require.Equal(t, sz, l)
 		require.Equal(t, b, b1)
 
 		kt, vt, size, l, _ := Binary.ReadMapBegin(b)
@@ -265,11 +265,11 @@ func TestBinary(t *testing.T) {
 		sz := Binary.ListBeginLength()
 
 		b := Binary.AppendListBegin([]byte(nil), testvt, testsize)
-		require.Equal(t, int(sz), len(b))
+		require.Equal(t, sz, len(b))
 
 		b1 := make([]byte, sz)
 		l := Binary.WriteListBegin(b1, testvt, testsize)
-		require.Equal(t, int(sz), l)
+		require.Equal(t, sz, l)
 		require.Equal(t, b, b1)
 
 		vt, size, l, _ := Binary.ReadListBegin(b)
@@ -286,11 +286,11 @@ func TestBinary(t *testing.T) {
 		sz := Binary.SetBeginLength()
 
 		b := Binary.AppendSetBegin([]byte(nil), testvt, testsize)
-		require.Equal(t, int(sz), len(b))
+		require.Equal(t, sz, len(b))
 
 		b1 := make([]byte, sz)
 		l := Binary.WriteSetBegin(b1, testvt, testsize)
-		require.Equal(t, int(sz), l)
+		require.Equal(t, sz, l)
 		require.Equal(t, b, b1)
 
 		vt, size, l, _ := Binary.ReadSetBegin(b)
