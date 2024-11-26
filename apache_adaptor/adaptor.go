@@ -25,15 +25,26 @@ import (
 )
 
 // AdaptRead receive a kitex binary protocol and read it by given function.
-func AdaptRead(iprot interface{}, readFunc func(buf []byte) (int, error)) error {
+func AdaptRead(p, iprot interface{}) error {
+	// for now, we use fastCodec to adapt apache codec.
+	// the struct should have the function 'FastRead'
+	fastStruct, ok := p.(fastReader)
+	if !ok {
+		return fmt.Errorf("no codec implementation available")
+	}
+
 	var br bufiox.Reader
 	// if iprot is from kitex v0.12.0+, use interface assert to get bufiox reader
 	if bp, ok := iprot.(bufioxReaderWriter); ok {
 		br = bp.GetBufioxReader()
 	} else {
-		// if iprot is from kitex version lower than v0.12.0, use reflection to get reader
-		// in kitex v0.10.0, reader is from the field 'br' which is a bufiox.Reader
-		// in kitex under v0.10.0, reader is from the field 'trans' which is kitex byteBuffer (mostly NetpollByteBuffer)
+		// if iprot is from kitex lower than v0.12.0, use reflection to get reader
+		// 	1. in kitex v0.11.0, reader is from the field 'br' which is a bufiox.Reader
+		// 		eg: https://github.com/cloudwego/kitex/blob/v0.11.0/pkg/protocol/bthrift/apache/binary_protocol.go#L44
+		//  2. in kitex under v0.11.0, reader is from the field 'trans' which is kitex byteBuffer (mostly NetpollByteBuffer)
+		// 		eg: https://github.com/cloudwego/kitex/blob/v0.5.2/pkg/remote/codec/thrift/binary_protocol.go#L54
+		// in apache thrift v0.13.0, reader is from the field 'trans' which implements the interface io.ReadWriter
+		//  eg: https://github.com/apache/thrift/blob/v0.13.0/lib/go/thrift/binary_protocol.go#L33
 		fieldNames := []string{"br", "trans"}
 		for _, fn := range fieldNames {
 			reader, exist, err := getUnexportField(iprot, fn)
@@ -46,9 +57,11 @@ func AdaptRead(iprot interface{}, readFunc func(buf []byte) (int, error)) error 
 					br = r
 				case byteBuffer:
 					// if reader is from byteBuffer, Read() function is not always available
-					// so use an adaptor to implement Read()  by Next() and ReadableLen()
-					rd := next2Reader(r)
-					br = bufiox.NewDefaultReader(rd)
+					// so use an adaptor to implement Read() by Next() and ReadableLen()
+					br = bufiox.NewDefaultReader(byteBuffer2ReadWriter(r))
+				case io.ReadWriter:
+					// if reader is not byteBuffer but is io.ReadWriter, it suppose to be apache thrift binary protocol
+					br = bufiox.NewDefaultReader(r)
 				default:
 					return fmt.Errorf("reader not ok")
 				}
@@ -59,24 +72,40 @@ func AdaptRead(iprot interface{}, readFunc func(buf []byte) (int, error)) error 
 	if br == nil {
 		return fmt.Errorf("no available field for reader")
 	}
+
+	// read data from iprot
 	buf, err := thrift.NewSkipDecoder(br).Next(thrift.STRUCT)
 	if err != nil {
 		return err
 	}
-	_, err = readFunc(buf)
+
+	// unmarshal the data into struct
+	_, err = fastStruct.FastRead(buf)
 	return err
 }
 
 // AdaptWrite receive a kitex binary protocol and write it by given function.
-func AdaptWrite(oprot interface{}, writeFunc func() []byte) error {
+func AdaptWrite(p, oprot interface{}) error {
+	// for now, we use fastCodec, the struct should have the function 'FastWrite'
+	// but in old kitex_gen, the arguments of FastWrite is not from the same package.
+	// so we use reflection to handle this situation.
+	fastStruct, err := toFastCodec(p)
+	if err != nil {
+		return fmt.Errorf("no codec implementation available:%s", err)
+	}
+
 	var bw bufiox.Writer
 	// if iprot is from kitex v0.12.0+, use interface assert to get bufiox writer
 	if bp, ok := oprot.(bufioxReaderWriter); ok {
 		bw = bp.GetBufioxWriter()
 	} else {
-		// if iprot is from kitex version lower than v0.12.0, use reflection to get writer
-		// in kitex v0.10.0, writer is from the field 'bw' which is a bufiox.Writer
-		// in kitex under v0.10.0, writer is from the field 'trans' which implements the interface io.Writer
+		// if iprot is from kitex lower than v0.12.0, use reflection to get writer
+		// 	1. in kitex v0.11.0, writer is from the field 'bw' which is a bufiox.Writer
+		// 		eg: https://github.com/cloudwego/kitex/blob/v0.11.0/pkg/protocol/bthrift/apache/binary_protocol.go#L44
+		// 	2. in kitex under v0.11.0, writer is from the field 'trans' which is kitex buffer (mostly NetpollByteBuffer)
+		// 		eg: https://github.com/cloudwego/kitex/blob/v0.5.2/pkg/remote/codec/thrift/binary_protocol.go#L54
+		// in apache thrift v0.13.0, writer is from the field 'trans' which implements the interface io.ReadWriter
+		//  eg: https://github.com/apache/thrift/blob/v0.13.0/lib/go/thrift/binary_protocol.go#L33
 		fieldNames := []string{"bw", "trans"}
 		for _, fn := range fieldNames {
 			writer, exist, err := getUnexportField(oprot, fn)
@@ -87,7 +116,12 @@ func AdaptWrite(oprot interface{}, writeFunc func() []byte) error {
 				switch w := writer.(type) {
 				case bufiox.Writer:
 					bw = w
-				case io.Writer:
+				case byteBuffer:
+					// if writer is from byteBuffer, Write() function is not always available
+					// so use an adaptor to implement Write()  by Malloc()
+					bw = bufiox.NewDefaultWriter(byteBuffer2ReadWriter(w))
+				case io.ReadWriter:
+					// if writer is not byteBuffer but is io.ReadWriter, it supposes to be apache thrift binary protocol
 					bw = bufiox.NewDefaultWriter(w)
 				default:
 					return fmt.Errorf("writer type not ok")
@@ -99,8 +133,11 @@ func AdaptWrite(oprot interface{}, writeFunc func() []byte) error {
 	if bw == nil {
 		return fmt.Errorf("no available field for writer")
 	}
-	buf := writeFunc()
-	_, err := bw.WriteBinary(buf)
+
+	// use fast codec
+	buf := make([]byte, fastStruct.BLength())
+	buf = buf[:fastStruct.FastWriteNocopy(buf, nil)]
+	_, err = bw.WriteBinary(buf)
 	if err != nil {
 		return err
 	}
@@ -123,40 +160,4 @@ func getUnexportField(p interface{}, fieldName string) (value interface{}, ok bo
 type bufioxReaderWriter interface {
 	GetBufioxReader() bufiox.Reader
 	GetBufioxWriter() bufiox.Writer
-}
-
-// byteBuffer
-type byteBuffer interface {
-	// Next reads the next n bytes sequentially and returns the original buffer.
-	Next(n int) (p []byte, err error)
-
-	// ReadableLen returns the total length of readable buffer.
-	// Return: -1 means unreadable.
-	ReadableLen() (n int)
-}
-
-// nextReader is an adaptor that implement Read() by Next() and ReadableLen()
-type nextReader struct {
-	nx byteBuffer
-}
-
-// Read reads data from the nextReader's internal buffer into p.
-func (nr nextReader) Read(p []byte) (n int, err error) {
-	readable := nr.nx.ReadableLen()
-	if readable == -1 {
-		return 0, err
-	}
-	if readable > len(p) {
-		readable = len(p)
-	}
-	data, err := nr.nx.Next(readable)
-	if err != nil {
-		return -1, err
-	}
-	copy(p, data)
-	return readable, nil
-}
-
-func next2Reader(n byteBuffer) io.Reader {
-	return &nextReader{nx: n}
 }
