@@ -3,12 +3,11 @@ name: Tests
 on: [ push, pull_request ]
 
 jobs:
-  unit-benchmark-test:
+  unittest:
     strategy:
       matrix:
         go: [ "1.18", "1.19", "1.20", "1.21", "1.22", "1.23" ]
-        os: [ X64 ]
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -16,10 +15,24 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: ${{ matrix.go }}
-          cache: false # don't use cache for self-hosted runners
+          cache: true # false for self-hosted runners
 
       - name: Unit Test
         run: go test -race ./...
+
+  benchmark:
+    strategy:
+      matrix:
+        go: [ "1.18", "1.19", "1.20", "1.21", "1.22", "1.23" ]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go }}
+          cache: true # false for self-hosted runners
 
       - name: Benchmark
         run: go test -bench=. -benchmem -run=none ./... -benchtime=100ms

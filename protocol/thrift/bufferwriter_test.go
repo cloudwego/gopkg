@@ -32,48 +32,48 @@ func TestBinaryWriter(t *testing.T) {
 	x := BinaryProtocol{}
 
 	b := x.AppendMessageBegin(nil, "hello", 1, 2)
-	w.WriteMessageBegin("hello", 1, 2)
+	_ = w.WriteMessageBegin("hello", 1, 2)
 
 	b = x.AppendFieldBegin(b, 3, 4)
-	w.WriteFieldBegin(3, 4)
+	_ = w.WriteFieldBegin(3, 4)
 
 	b = x.AppendFieldStop(b)
-	w.WriteFieldStop()
+	_ = w.WriteFieldStop()
 
 	b = x.AppendMapBegin(b, 5, 6, 7)
-	w.WriteMapBegin(5, 6, 7)
+	_ = w.WriteMapBegin(5, 6, 7)
 
 	b = x.AppendListBegin(b, 8, 9)
-	w.WriteListBegin(8, 9)
+	_ = w.WriteListBegin(8, 9)
 
 	b = x.AppendSetBegin(b, 10, 11)
-	w.WriteSetBegin(10, 11)
+	_ = w.WriteSetBegin(10, 11)
 
 	b = x.AppendBinary(b, []byte("12"))
-	w.WriteBinary([]byte("12"))
+	_ = w.WriteBinary([]byte("12"))
 
 	b = x.AppendString(b, "13")
-	w.WriteString("13")
+	_ = w.WriteString("13")
 
 	b = x.AppendBool(b, true)
 	b = x.AppendBool(b, false)
-	w.WriteBool(true)
-	w.WriteBool(false)
+	_ = w.WriteBool(true)
+	_ = w.WriteBool(false)
 
 	b = x.AppendByte(b, 14)
-	w.WriteByte(14)
+	_ = w.WriteByte(14)
 
 	b = x.AppendI16(b, 15)
-	w.WriteI16(15)
+	_ = w.WriteI16(15)
 
 	b = x.AppendI32(b, 16)
-	w.WriteI32(16)
+	_ = w.WriteI32(16)
 
 	b = x.AppendI64(b, 17)
-	w.WriteI64(17)
+	_ = w.WriteI64(17)
 
 	b = x.AppendDouble(b, 18.5)
-	w.WriteDouble(18.5)
+	_ = w.WriteDouble(18.5)
 
 	w.w.Flush()
 	w.Recycle()

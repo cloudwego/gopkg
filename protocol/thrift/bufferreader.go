@@ -274,7 +274,7 @@ func (r *BufferReader) skipType(t TType, maxdepth int) error {
 		}
 		ksz, vsz := int(typeToSize[kt]), int(typeToSize[vt])
 		if ksz > 0 && vsz > 0 {
-			return r.skipn(int(sz) * (ksz + vsz))
+			return r.skipn(sz * (ksz + vsz))
 		}
 		for j := 0; j < sz; j++ {
 			if ksz > 0 {
