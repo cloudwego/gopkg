@@ -23,7 +23,7 @@ import (
 	"unsafe"
 
 	"github.com/bytedance/gopkg/lang/span"
-	"github.com/cloudwego/gopkg/internal/hack"
+	"github.com/cloudwego/gopkg/unsafex"
 )
 
 var (
@@ -136,7 +136,7 @@ func (p BinaryProtocol) WriteStringNocopy(buf []byte, w NocopyWriter, v string) 
 		return p.WriteString(buf, v)
 	}
 	binary.BigEndian.PutUint32(buf, uint32(len(v)))
-	_ = w.WriteDirect(hack.StringToByteSlice(v), len(buf[4:])) // always err == nil ?
+	_ = w.WriteDirect(unsafex.StringToBinary(v), len(buf[4:])) // always err == nil ?
 	return 4
 }
 
@@ -357,7 +357,7 @@ func (p BinaryProtocol) ReadString(buf []byte) (s string, l int, err error) {
 	}
 	if spanCacheEnable {
 		data := spanCache.Copy(buf[4:l])
-		s = hack.ByteSliceToString(data)
+		s = unsafex.BinaryToString(data)
 	} else {
 		s = string(buf[4:l])
 	}

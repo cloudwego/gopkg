@@ -22,7 +22,7 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/cloudwego/gopkg/internal/hack"
+	"github.com/cloudwego/gopkg/unsafex"
 	"github.com/stretchr/testify/require"
 )
 
@@ -33,7 +33,7 @@ func randStrings(m, n int) []string {
 	for i := 0; i < n; i++ {
 		s := b[m*i:]
 		s = s[:m]
-		ret = append(ret, hack.ByteSliceToString(s))
+		ret = append(ret, unsafex.BinaryToString(s))
 	}
 	return ret
 }

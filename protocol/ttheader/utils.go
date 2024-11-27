@@ -19,7 +19,7 @@ import (
 	"io"
 
 	"github.com/cloudwego/gopkg/bufiox"
-	"github.com/cloudwego/gopkg/internal/hack"
+	"github.com/cloudwego/gopkg/unsafex"
 )
 
 // The byte count of 32 and 16 integer values.
@@ -109,7 +109,7 @@ func WriteString(val string, out bufiox.Writer) (int, error) {
 	if err := WriteUint32(uint32(strLen), out); err != nil {
 		return 0, err
 	}
-	n, err := out.WriteBinary(hack.StringToByteSlice(val))
+	n, err := out.WriteBinary(unsafex.StringToBinary(val))
 	if err != nil {
 		return 0, err
 	}
@@ -122,7 +122,7 @@ func WriteString2BLen(val string, out bufiox.Writer) (int, error) {
 	if err := WriteUint16(uint16(strLen), out); err != nil {
 		return 0, err
 	}
-	n, err := out.WriteBinary(hack.StringToByteSlice(val))
+	n, err := out.WriteBinary(unsafex.StringToBinary(val))
 	if err != nil {
 		return 0, err
 	}

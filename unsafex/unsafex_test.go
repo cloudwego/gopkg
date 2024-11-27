@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package hack
+package unsafex
 
 import (
 	"testing"
@@ -22,9 +22,34 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestUnsafe(t *testing.T) {
-	s := "hello"
+func TestUBinaryToString(t *testing.T) {
 	b := []byte("hello")
-	assert.Equal(t, s, ByteSliceToString(b))
-	assert.Equal(t, b, StringToByteSlice(s))
+	s := BinaryToString(b)
+	assert.Equal(t, string(b), s)
+	b[0] = 'x'
+	assert.Equal(t, string(b), s)
+}
+
+func BenchmarkBinaryToString(b *testing.B) {
+	x := []byte("hello")
+	for i := 0; i < b.N; i++ {
+		_ = BinaryToString(x)
+	}
+}
+
+func TestStringToBinary(t *testing.T) {
+	x := []byte("hello")
+	// doesn't use string literal, or `b[0] = 'x'` will panic coz addr is readonly
+	s := string(x)
+	b := StringToBinary(s)
+	assert.Equal(t, s, string(b))
+	b[0] = 'x'
+	assert.Equal(t, s, string(b))
+}
+
+func BenchmarkStringToBinary(b *testing.B) {
+	s := "hello"
+	for i := 0; i < b.N; i++ {
+		_ = StringToBinary(s)
+	}
 }

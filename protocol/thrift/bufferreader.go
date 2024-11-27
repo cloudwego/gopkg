@@ -24,7 +24,7 @@ import (
 
 	"github.com/bytedance/gopkg/lang/dirtmake"
 	"github.com/cloudwego/gopkg/bufiox"
-	"github.com/cloudwego/gopkg/internal/hack"
+	"github.com/cloudwego/gopkg/unsafex"
 )
 
 // BufferReader represents a reader for binary protocol
@@ -162,7 +162,7 @@ func (r *BufferReader) ReadString() (s string, err error) {
 	if err != nil {
 		return "", err
 	}
-	return hack.ByteSliceToString(b), nil
+	return unsafex.BinaryToString(b), nil
 }
 
 // ReadMessageBegin ...

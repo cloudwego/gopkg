@@ -23,9 +23,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/cloudwego/gopkg/internal/hack"
 	"github.com/cloudwego/gopkg/internal/hash/maphash"
 	"github.com/cloudwego/gopkg/internal/strstore"
+	"github.com/cloudwego/gopkg/unsafex"
 )
 
 // StrMap represents GC friendly readonly string map implementation.
@@ -133,7 +133,7 @@ func (m *StrMap[V]) Len() int {
 // It panics if i is not in the range [0, Len()).
 func (m *StrMap[V]) Item(i int) (string, V) {
 	e := &m.items[i]
-	return hack.ByteSliceToString(m.data[e.off : e.off+int(e.sz)]), e.v
+	return unsafex.BinaryToString(m.data[e.off : e.off+int(e.sz)]), e.v
 }
 
 type itemsBySlot[V any] []mapItem[V]
