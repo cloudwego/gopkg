@@ -33,6 +33,7 @@ func AdaptRead(p, iprot interface{}) error {
 		return fmt.Errorf("no codec implementation available")
 	}
 
+	var rd io.Reader
 	var br bufiox.Reader
 	// if iprot is from kitex v0.12.0+, use interface assert to get bufiox reader
 	if bp, ok := iprot.(bufioxReaderWriter); ok {
@@ -58,10 +59,10 @@ func AdaptRead(p, iprot interface{}) error {
 				case byteBuffer:
 					// if reader is from byteBuffer, Read() function is not always available
 					// so use an adaptor to implement Read() by Next() and ReadableLen()
-					br = bufiox.NewDefaultReader(byteBuffer2ReadWriter(r))
+					rd = byteBuffer2ReadWriter(r)
 				case io.ReadWriter:
-					// if reader is not byteBuffer but is io.ReadWriter, it suppose to be apache thrift binary protocol
-					br = bufiox.NewDefaultReader(r)
+					// if reader is not byteBuffer but is io.ReadWriter, it supposes to be apache thrift binary protocol
+					rd = r
 				default:
 					return fmt.Errorf("reader not ok")
 				}
@@ -69,18 +70,29 @@ func AdaptRead(p, iprot interface{}) error {
 			}
 		}
 	}
-	if br == nil {
+	if rd == nil && br == nil {
 		return fmt.Errorf("no available field for reader")
 	}
 
-	// read data from iprot
-	buf, err := thrift.NewSkipDecoder(br).Next(thrift.STRUCT)
+	var sd *thrift.SkipDecoder
+	if br != nil {
+		sd = thrift.NewSkipDecoder(br)
+	} else {
+		// if there's no bufiox.Reader, do not wrap a new bufiox.Reader, or some data will remain in the buffer
+		// directly read from io.Reader
+		sd = thrift.NewSkipDecoderWithIOReader(rd)
+	}
+
+	buf, err := sd.Next(thrift.STRUCT)
 	if err != nil {
 		return err
 	}
 
+	sd.Release()
+
 	// unmarshal the data into struct
 	_, err = fastStruct.FastRead(buf)
+
 	return err
 }
 
