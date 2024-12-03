@@ -25,7 +25,7 @@ import (
 )
 
 // AdaptRead receive a kitex binary protocol and read it by given function.
-func AdaptRead(p, iprot interface{}) error {
+func AdaptRead(p, iprot interface{}) (err error) {
 	// for now, we use fastCodec to adapt apache codec.
 	// the struct should have the function 'FastRead'
 	fastStruct, ok := p.(fastReader)
@@ -70,25 +70,23 @@ func AdaptRead(p, iprot interface{}) error {
 			}
 		}
 	}
-	if rd == nil && br == nil {
+
+	var buf []byte
+	if br != nil {
+		sd := thrift.NewSkipDecoder(br)
+		buf, err = sd.Next(thrift.STRUCT)
+		sd.Release()
+	} else if rd != nil {
+		sd := thrift.NewReaderSkipDecoder(rd)
+		buf, err = sd.Next(thrift.STRUCT)
+		sd.Release()
+	} else {
 		return fmt.Errorf("no available field for reader")
 	}
 
-	var sd *thrift.SkipDecoder
-	if br != nil {
-		sd = thrift.NewSkipDecoder(br)
-	} else {
-		// if there's no bufiox.Reader, do not wrap a new bufiox.Reader, or some data will remain in the buffer
-		// directly read from io.Reader
-		sd = thrift.NewSkipDecoderWithIOReader(rd)
-	}
-
-	buf, err := sd.Next(thrift.STRUCT)
 	if err != nil {
 		return err
 	}
-
-	sd.Release()
 
 	// unmarshal the data into struct
 	_, err = fastStruct.FastRead(buf)
@@ -148,7 +146,11 @@ func AdaptWrite(p, oprot interface{}) error {
 
 	// use fast codec
 	buf := make([]byte, fastStruct.BLength())
-	buf = buf[:fastStruct.FastWriteNocopy(buf, nil)]
+	n := fastStruct.FastWriteNocopy(buf, nil)
+	if n < 0 {
+		return fmt.Errorf("failed to fast write")
+	}
+	buf = buf[:n]
 	_, err = bw.WriteBinary(buf)
 	if err != nil {
 		return err

@@ -57,11 +57,11 @@ func toFastCodec(p interface{}) (thrift.FastCodec, error) {
 	}
 
 	if method.Type().Out(0) != reflect.TypeOf(0) {
-		return nil, fmt.Errorf("return type is not int")
+		return nil, fmt.Errorf("return type should be int")
 	}
 
 	if method.Type().In(0) != reflect.TypeOf([]byte{}) {
-		return nil, fmt.Errorf("input type 1st is not []byte")
+		return nil, fmt.Errorf("the first argument should be []byte")
 	}
 
 	return &oldFastCodec{
@@ -88,6 +88,7 @@ func (c *oldFastCodec) FastWriteNocopy(buf []byte, bw thrift.NocopyWriter) int {
 	return out[0].Interface().(int)
 }
 
+// FastRead actually this function is not used, just to implement the FastCodec interface
 func (c *oldFastCodec) FastRead(buf []byte) (int, error) {
 	return c.p.FastRead(buf)
 }
