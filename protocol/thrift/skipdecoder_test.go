@@ -92,54 +92,75 @@ func TestSkipDecoder(t *testing.T) {
 	b = x.AppendFieldStop(b)
 	sz10 := len(b)
 
-	r := NewSkipDecoder(bufiox.NewBytesReader(b))
-	defer r.Release()
+	type NextIface interface {
+		Next(t TType) (buf []byte, err error)
+	}
 
-	readn := 0
-	b, err := r.Next(BYTE) // byte
-	require.NoError(t, err)
-	readn += len(b)
-	require.Equal(t, sz0, readn)
-	b, err = r.Next(STRING) // string
-	require.NoError(t, err)
-	readn += len(b)
-	require.Equal(t, sz1, readn)
-	b, err = r.Next(LIST) // list<i32>
-	require.NoError(t, err)
-	readn += len(b)
-	require.Equal(t, sz2, readn)
-	b, err = r.Next(LIST) // list<string>
-	require.NoError(t, err)
-	readn += len(b)
-	require.Equal(t, sz3, readn)
-	b, err = r.Next(LIST) // list<list<i32>>
-	require.NoError(t, err)
-	readn += len(b)
-	require.Equal(t, sz4, readn)
-	b, err = r.Next(MAP) // map<i32, i64>
-	require.NoError(t, err)
-	readn += len(b)
-	require.Equal(t, sz5, readn)
-	b, err = r.Next(MAP) // map<i32, string>
-	require.NoError(t, err)
-	readn += len(b)
-	require.Equal(t, sz6, readn)
-	b, err = r.Next(MAP) // map<string, i64>
-	require.NoError(t, err)
-	readn += len(b)
-	require.Equal(t, sz7, readn)
-	b, err = r.Next(MAP) // map<i32, list<i32>>
-	require.NoError(t, err)
-	readn += len(b)
-	require.Equal(t, sz8, readn)
-	b, err = r.Next(MAP) // map<list<i32>, i32>
-	require.NoError(t, err)
-	readn += len(b)
-	require.Equal(t, sz9, readn)
-	b, err = r.Next(STRUCT) // struct i32, list<i32>
-	require.NoError(t, err)
-	readn += len(b)
-	require.Equal(t, sz10, readn)
+	testNext := func(t *testing.T, r NextIface) {
+		readn := 0
+		b, err := r.Next(BYTE) // byte
+		require.NoError(t, err)
+		readn += len(b)
+		require.Equal(t, sz0, readn)
+		b, err = r.Next(STRING) // string
+		require.NoError(t, err)
+		readn += len(b)
+		require.Equal(t, sz1, readn)
+		b, err = r.Next(LIST) // list<i32>
+		require.NoError(t, err)
+		readn += len(b)
+		require.Equal(t, sz2, readn)
+		b, err = r.Next(LIST) // list<string>
+		require.NoError(t, err)
+		readn += len(b)
+		require.Equal(t, sz3, readn)
+		b, err = r.Next(LIST) // list<list<i32>>
+		require.NoError(t, err)
+		readn += len(b)
+		require.Equal(t, sz4, readn)
+		b, err = r.Next(MAP) // map<i32, i64>
+		require.NoError(t, err)
+		readn += len(b)
+		require.Equal(t, sz5, readn)
+		b, err = r.Next(MAP) // map<i32, string>
+		require.NoError(t, err)
+		readn += len(b)
+		require.Equal(t, sz6, readn)
+		b, err = r.Next(MAP) // map<string, i64>
+		require.NoError(t, err)
+		readn += len(b)
+		require.Equal(t, sz7, readn)
+		b, err = r.Next(MAP) // map<i32, list<i32>>
+		require.NoError(t, err)
+		readn += len(b)
+		require.Equal(t, sz8, readn)
+		b, err = r.Next(MAP) // map<list<i32>, i32>
+		require.NoError(t, err)
+		readn += len(b)
+		require.Equal(t, sz9, readn)
+		b, err = r.Next(STRUCT) // struct i32, list<i32>
+		require.NoError(t, err)
+		readn += len(b)
+		require.Equal(t, sz10, readn)
+	}
+
+	t.Run("NewSkipDecoder", func(t *testing.T) {
+		r := NewSkipDecoder(bufiox.NewBytesReader(b))
+		defer r.Release()
+		testNext(t, r)
+	})
+
+	t.Run("NewBytesSkipDecoder", func(t *testing.T) {
+		r := NewBytesSkipDecoder(b)
+		defer r.Release()
+		testNext(t, r)
+	})
+
+	t.Run("NewReaderSkipDecoder", func(t *testing.T) {
+		r := NewReaderSkipDecoder(bytes.NewBuffer(b))
+		defer r.Release()
+		testNext(t, r)
+	})
 
 	{ // other cases
 		// errDepthLimitExceeded
@@ -219,8 +240,7 @@ func BenchmarkSkipDecoder(b *testing.B) {
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			bufReader := bufiox.NewBytesReader(bs)
-			sr := NewSkipDecoder(bufReader)
+			sr := NewBytesSkipDecoder(bs)
 			buf, err := sr.Next(STRUCT)
 			if err != nil {
 				b.Fatal(err)
@@ -229,7 +249,6 @@ func BenchmarkSkipDecoder(b *testing.B) {
 				b.Fatal("bytes not equal")
 			}
 			sr.Release()
-			_ = bufReader.Release(nil)
 		}
 	})
 }
