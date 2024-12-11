@@ -25,7 +25,7 @@ type fastReader interface {
 	FastRead(buf []byte) (int, error)
 }
 
-const OldFastWriteMethod = "FastWriteNocopy"
+const oldFastWriteMethod = "FastWriteNocopy"
 
 func toFastCodec(p interface{}) (thrift.FastCodec, error) {
 	// if struct is from kitex_gen which is generated higher than v0.10.0，just assert gopkg thrift.FastCodec
@@ -42,10 +42,10 @@ func toFastCodec(p interface{}) (thrift.FastCodec, error) {
 		return nil, fmt.Errorf("no BLength method for struct")
 	}
 
-	method := reflect.ValueOf(p).MethodByName(OldFastWriteMethod)
+	method := reflect.ValueOf(p).MethodByName(oldFastWriteMethod)
 
 	if !method.IsValid() {
-		return nil, fmt.Errorf("method not found or not exported: %s", OldFastWriteMethod)
+		return nil, fmt.Errorf("method not found or not exported: %s", oldFastWriteMethod)
 	}
 
 	if method.Type().NumIn() != 2 {
