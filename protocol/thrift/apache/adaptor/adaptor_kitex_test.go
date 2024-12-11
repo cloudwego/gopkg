@@ -217,12 +217,16 @@ func (p *oldKitexStruct) FastRead(buf []byte) (int, error) {
 }
 
 // binaryWriter does not implement nocopy writer
-func (p *oldKitexStruct) FastWriteNocopy(buf []byte, binaryWriter interface{}) int {
+func (p *oldKitexStruct) FastWriteNocopy(buf []byte, binaryWriter oldBinaryWriter) int {
 	if reflect.DeepEqual(p, mockOldKitexStruct()) {
 		copy(buf, mockBinary)
 		return len(buf)
 	}
 	return -1
+}
+
+type oldBinaryWriter interface {
+	WriteDirect(b []byte, remainCap int) error
 }
 
 var mockBinary = []byte{2, 0, 1, 1, 3, 0, 2, 3, 3, 0, 3, 1, 6, 0, 4, 0, 2, 0}
