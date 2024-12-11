@@ -84,7 +84,7 @@ func (c *oldFastCodec) BLength() int {
 
 func (c *oldFastCodec) FastWriteNocopy(buf []byte, bw thrift.NocopyWriter) int {
 	method := c.method
-	out := method.Call([]reflect.Value{reflect.ValueOf(buf), reflect.New(method.Type().In(1)).Elem()})
+	out := method.Call([]reflect.Value{reflect.ValueOf(buf), reflect.NewAt(method.Type().In(1), nil)})
 	return out[0].Interface().(int)
 }
 
