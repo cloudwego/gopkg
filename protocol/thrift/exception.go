@@ -170,7 +170,7 @@ const ( // ProtocolException codes from apache thrift
 
 var (
 	errBufferTooShort = NewProtocolException(INVALID_DATA, "buffer too short")
-	errNegativeSize   = NewProtocolException(NEGATIVE_SIZE, "negative size")
+	errDataLength     = NewProtocolException(INVALID_DATA, "invalid data length")
 )
 
 // NewTransportExceptionWithType

@@ -69,7 +69,7 @@ func (r *BufferReader) readBinary(bs []byte) (n int, err error) {
 
 func (r *BufferReader) skipn(n int) (err error) {
 	if n < 0 {
-		return errNegativeSize
+		return errDataLength
 	}
 	if err = r.r.Skip(n); err != nil {
 		return NewProtocolExceptionWithErr(err)
@@ -149,7 +149,7 @@ func (r *BufferReader) ReadBinary() (b []byte, err error) {
 		return nil, err
 	}
 	if sz < 0 {
-		return nil, errNegativeSize
+		return nil, errDataLength
 	}
 	b = dirtmake.Bytes(int(sz), int(sz))
 	_, err = r.readBinary(b)
@@ -270,7 +270,7 @@ func (r *BufferReader) skipType(t TType, maxdepth int) error {
 			return err
 		}
 		if sz < 0 {
-			return errNegativeSize
+			return errDataLength
 		}
 		ksz, vsz := int(typeToSize[kt]), int(typeToSize[vt])
 		if ksz > 0 && vsz > 0 {
@@ -305,7 +305,7 @@ func (r *BufferReader) skipType(t TType, maxdepth int) error {
 			return err
 		}
 		if sz < 0 {
-			return errNegativeSize
+			return errDataLength
 		}
 		if vsz := typeToSize[vt]; vsz > 0 {
 			return r.skipn(sz * int(vsz))
