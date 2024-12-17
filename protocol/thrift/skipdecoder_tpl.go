@@ -61,7 +61,7 @@ func (p SkipDecoderTpl[T]) Skip(t TType, maxdepth int) error {
 		}
 		sz := int(binary.BigEndian.Uint32(b))
 		if sz < 0 {
-			return errNegativeSize
+			return errDataLength
 		}
 		if _, err := p.r.SkipN(sz); err != nil {
 			return err
@@ -90,7 +90,7 @@ func (p SkipDecoderTpl[T]) Skip(t TType, maxdepth int) error {
 		}
 		kt, vt, sz := TType(b[0]), TType(b[1]), int32(binary.BigEndian.Uint32(b[2:]))
 		if sz < 0 {
-			return errNegativeSize
+			return errDataLength
 		}
 		ksz, vsz := int(typeToSize[kt]), int(typeToSize[vt])
 		if ksz > 0 && vsz > 0 {
@@ -112,7 +112,7 @@ func (p SkipDecoderTpl[T]) Skip(t TType, maxdepth int) error {
 		}
 		vt, sz := TType(b[0]), int32(binary.BigEndian.Uint32(b[1:]))
 		if sz < 0 {
-			return errNegativeSize
+			return errDataLength
 		}
 		if vsz := typeToSize[vt]; vsz > 0 {
 			_, err := p.r.SkipN(int(sz) * int(vsz))

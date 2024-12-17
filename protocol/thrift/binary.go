@@ -306,21 +306,39 @@ func (BinaryProtocol) ReadMapBegin(buf []byte) (kt, vt TType, size, l int, err e
 	if len(buf) < 6 {
 		return 0, 0, 0, 0, errReadMap
 	}
-	return TType(buf[0]), TType(buf[1]), int(binary.BigEndian.Uint32(buf[2:])), 6, nil
+	l = 6
+	kt, vt = TType(buf[0]), TType(buf[1])
+	size = int(int32(binary.BigEndian.Uint32(buf[2:])))
+	if size < 0 {
+		err = errDataLength
+	}
+	return
 }
 
 func (BinaryProtocol) ReadListBegin(buf []byte) (et TType, size, l int, err error) {
 	if len(buf) < 5 {
 		return 0, 0, 0, errReadList
 	}
-	return TType(buf[0]), int(binary.BigEndian.Uint32(buf[1:])), 5, nil
+	l = 5
+	et = TType(buf[0])
+	size = int(int32(binary.BigEndian.Uint32(buf[1:])))
+	if size < 0 {
+		err = errDataLength
+	}
+	return
 }
 
 func (BinaryProtocol) ReadSetBegin(buf []byte) (et TType, size, l int, err error) {
 	if len(buf) < 5 {
 		return 0, 0, 0, errReadSet
 	}
-	return TType(buf[0]), int(binary.BigEndian.Uint32(buf[1:])), 5, nil
+	l = 5
+	et = TType(buf[0])
+	size = int(int32(binary.BigEndian.Uint32(buf[1:])))
+	if size < 0 {
+		err = errDataLength
+	}
+	return
 }
 
 func (p BinaryProtocol) ReadBinary(buf []byte) (b []byte, l int, err error) {
@@ -329,7 +347,7 @@ func (p BinaryProtocol) ReadBinary(buf []byte) (b []byte, l int, err error) {
 		return nil, 0, errReadBin
 	}
 	if sz < 0 {
-		return nil, 0, errNegativeSize
+		return nil, 0, errDataLength
 	}
 	l = 4 + int(sz)
 	if len(buf) < l {
@@ -349,7 +367,7 @@ func (p BinaryProtocol) ReadString(buf []byte) (s string, l int, err error) {
 		return "", 0, errReadStr
 	}
 	if sz < 0 {
-		return "", 0, errNegativeSize
+		return "", 0, errDataLength
 	}
 	l = 4 + int(sz)
 	if len(buf) < l {
@@ -424,7 +442,7 @@ func skipstr(p unsafe.Pointer, e uintptr) (int, error) {
 	if uintptr(p)+uintptr(4) <= e {
 		n := int(p2i32(p))
 		if n < 0 {
-			return 0, errNegativeSize
+			return 0, errDataLength
 		}
 		if uintptr(p)+uintptr(4+n) <= e {
 			return 4 + n, nil
@@ -463,7 +481,7 @@ func skipType(p unsafe.Pointer, e uintptr, t TType, maxdepth int) (int, error) {
 		}
 		kt, vt, sz := TType(*(*byte)(p)), TType(*(*byte)(unsafe.Add(p, 1))), p2i32(unsafe.Add(p, 2))
 		if sz < 0 {
-			return 0, errNegativeSize
+			return 0, errDataLength
 		}
 		ksz, vsz := int(typeToSize[kt]), int(typeToSize[vt])
 		if ksz > 0 && vsz > 0 { // fast path, fast skip
@@ -513,7 +531,7 @@ func skipType(p unsafe.Pointer, e uintptr, t TType, maxdepth int) (int, error) {
 		}
 		vt, sz := TType(*(*byte)(p)), p2i32(unsafe.Add(p, 1))
 		if sz < 0 {
-			return 0, errNegativeSize
+			return 0, errDataLength
 		}
 		vsz := int(typeToSize[vt])
 		if vsz > 0 { // fast path, fast skip

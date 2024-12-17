@@ -303,6 +303,42 @@ func TestBinary(t *testing.T) {
 	}
 }
 
+func TestBinary_ErrDataLength(t *testing.T) {
+	x := BinaryProtocol{}
+	{ // String
+		b := x.AppendI32([]byte(nil), -1)
+		_, _, err := x.ReadString(b)
+		require.Same(t, errDataLength, err)
+	}
+
+	{ // Binary
+		b := x.AppendI32([]byte(nil), -1)
+		_, _, err := x.ReadBinary(b)
+		require.Same(t, errDataLength, err)
+	}
+
+	{ // Map
+		testkt, testvt, testsize := I64, I32, -1
+		b := x.AppendMapBegin([]byte(nil), testkt, testvt, testsize)
+		_, _, _, _, err := x.ReadMapBegin(b)
+		require.Same(t, errDataLength, err)
+	}
+
+	{ // List
+		testvt, testsize := I32, -1
+		b := x.AppendListBegin([]byte(nil), testvt, testsize)
+		_, _, _, err := x.ReadListBegin(b)
+		require.Same(t, errDataLength, err)
+	}
+
+	{ // Set
+		testvt, testsize := I32, -1
+		b := x.AppendSetBegin([]byte(nil), testvt, testsize)
+		_, _, _, err := x.ReadSetBegin(b)
+		require.Same(t, errDataLength, err)
+	}
+}
+
 func TestBinarySkip(t *testing.T) {
 	// byte
 	b := Binary.AppendByte([]byte(nil), 1)
