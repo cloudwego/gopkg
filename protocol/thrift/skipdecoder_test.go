@@ -214,8 +214,8 @@ func BenchmarkSkipDecoder(b *testing.B) {
 
 	// MAP, fid=8
 	bs = Binary.AppendFieldBegin(bs, MAP, 8)
-	bs = Binary.AppendMapBegin(bs, DOUBLE, DOUBLE, 1)
-	bs = Binary.AppendDouble(bs, 8.1)
+	bs = Binary.AppendMapBegin(bs, I16, DOUBLE, 1)
+	bs = Binary.AppendI16(bs, 8)
 	bs = Binary.AppendDouble(bs, 8.2)
 
 	// SET, fid=9
@@ -234,21 +234,44 @@ func BenchmarkSkipDecoder(b *testing.B) {
 	bs = Binary.AppendI64(bs, 11)
 	bs = Binary.AppendFieldStop(bs)
 
+	// MAP(STRUCT), fid=12
+	bs = Binary.AppendFieldBegin(bs, MAP, 12)
+	bs = Binary.AppendMapBegin(bs, I64, STRUCT, 1)
+	bs = Binary.AppendI64(bs, 12)
+	bs = Binary.AppendFieldStop(
+		Binary.AppendI64(Binary.AppendFieldBegin(bs, I64, 1), 121), // fid=1, I64, v=121
+	)
+
+	// LIST(STRUCT), fid=13
+	bs = Binary.AppendFieldBegin(bs, LIST, 13)
+	bs = Binary.AppendListBegin(bs, STRUCT, 1)
+	bs = Binary.AppendFieldStop(
+		Binary.AppendI64(Binary.AppendFieldBegin(bs, I64, 1), 121), // fid=1, I64, v=121
+	)
+
 	// Finish struct
 	bs = Binary.AppendFieldStop(bs)
 
+	// run a test first before benchmark
+	sr := NewBytesSkipDecoder(bs)
+	buf, err := sr.Next(STRUCT)
+	if err != nil {
+		b.Fatal(err)
+	}
+	if !bytes.Equal(buf, bs) {
+		b.Fatal("bytes not equal")
+	}
+	sr.Release()
+
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
+		sr := &BytesSkipDecoder{}
 		for pb.Next() {
-			sr := NewBytesSkipDecoder(bs)
-			buf, err := sr.Next(STRUCT)
+			sr.Reset(bs)
+			_, err := sr.Next(STRUCT)
 			if err != nil {
 				b.Fatal(err)
 			}
-			if !bytes.Equal(buf, bs) {
-				b.Fatal("bytes not equal")
-			}
-			sr.Release()
 		}
 	})
 }
