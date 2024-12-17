@@ -59,7 +59,7 @@ func (p *SkipDecoder) Release() {
 // The returned buf is directly from bufiox.Reader with the same lifecycle.
 func (p *SkipDecoder) Next(t TType) (buf []byte, err error) {
 	p.rn = 0
-	if err = NewSkipDecoderTpl(p).Skip(t, defaultRecursionDepth); err != nil {
+	if err = skipDecoderImpl(p, t, defaultRecursionDepth); err != nil {
 		return
 	}
 	buf, err = p.r.Next(p.rn)
@@ -116,7 +116,7 @@ func (p *BytesSkipDecoder) Reset(b []byte) {
 //
 // The returned buf refers to the input []byte without copy
 func (p *BytesSkipDecoder) Next(t TType) (b []byte, err error) {
-	if err = NewSkipDecoderTpl(p).Skip(t, defaultRecursionDepth); err != nil {
+	if err = skipDecoderImpl(p, t, defaultRecursionDepth); err != nil {
 		return
 	}
 	b = p.b[:p.n]
@@ -125,7 +125,7 @@ func (p *BytesSkipDecoder) Next(t TType) (b []byte, err error) {
 	return
 }
 
-// SkipN implements SkipDecoderIface
+// SkipN implements skipDecoderIface
 func (p *BytesSkipDecoder) SkipN(n int) ([]byte, error) {
 	if len(p.b) >= p.n+n {
 		p.n += n
@@ -194,7 +194,7 @@ func (p *ReaderSkipDecoder) growSlow(n int) {
 // The returned []byte is valid before the next `Next` call or `Release`
 func (p *ReaderSkipDecoder) Next(t TType) (b []byte, err error) {
 	p.n = 0
-	if err = NewSkipDecoderTpl(p).Skip(t, defaultRecursionDepth); err != nil {
+	if err = skipDecoderImpl(p, t, defaultRecursionDepth); err != nil {
 		return
 	}
 	return p.b[:p.n], nil

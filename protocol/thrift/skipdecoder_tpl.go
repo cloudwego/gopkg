@@ -21,41 +21,32 @@ import (
 	"fmt"
 )
 
-// SkipDecoderIface represent the generics constraint of a SkipDecoder.
+// skipDecoderIface represent the generics constraint of a SkipDecoder.
 //
-// It's used by SkipDecoderTpl
-type SkipDecoderIface interface {
-	// SkipN read and skip n bytes
+// It's used by skipDecoderImpl
+type skipDecoderIface interface {
+	// SkipN reads and skips n bytes
 	//
-	// SkipDecoderTpl will not hold or modify the bytes between two `SkipN` calls.
+	// SkipDecoderIface will not hold or modify the bytes between two `SkipN` calls.
 	// It's safe to reuse buffer for next `SkipN` call.
-	//
-	// if SkipN is short enough, it can be inlined.
 	SkipN(n int) ([]byte, error)
 }
 
-// SkipDecoderTpl is the core logic of skipping thrift binary
-type SkipDecoderTpl[T SkipDecoderIface] struct {
-	r T
-}
-
-// NewSkipDecoderTpl ...
-func NewSkipDecoderTpl[T SkipDecoderIface](r T) SkipDecoderTpl[T] {
-	return SkipDecoderTpl[T]{r}
-}
-
-// Skip ...
-func (p SkipDecoderTpl[T]) Skip(t TType, maxdepth int) error {
+// NOTE: At the time of writing Go generics doesn't fully support monomorphization, and
+// it doesn't generate code copies for specific types which means
+// inline calling of SkipN is not working ...
+// This would be fixed in the future hopefully, so we use generics here.
+func skipDecoderImpl[T skipDecoderIface](r T, t TType, maxdepth int) error {
 	if maxdepth == 0 {
 		return errDepthLimitExceeded
 	}
 	if sz := typeToSize[t]; sz > 0 {
-		_, err := p.r.SkipN(int(sz))
+		_, err := r.SkipN(int(sz))
 		return err
 	}
 	switch t {
 	case STRING:
-		b, err := p.r.SkipN(4)
+		b, err := r.SkipN(4)
 		if err != nil {
 			return err
 		}
@@ -63,12 +54,12 @@ func (p SkipDecoderTpl[T]) Skip(t TType, maxdepth int) error {
 		if sz < 0 {
 			return errDataLength
 		}
-		if _, err := p.r.SkipN(sz); err != nil {
+		if _, err := r.SkipN(sz); err != nil {
 			return err
 		}
 	case STRUCT:
 		for {
-			b, err := p.r.SkipN(1) // TType
+			b, err := r.SkipN(1) // TType
 			if err != nil {
 				return err
 			}
@@ -76,15 +67,26 @@ func (p SkipDecoderTpl[T]) Skip(t TType, maxdepth int) error {
 			if tp == STOP {
 				break
 			}
-			if _, err := p.r.SkipN(2); err != nil { // Field ID
+			if sz := typeToSize[tp]; sz > 0 {
+				// fastpath
+				// Field ID + Value
+				if _, err := r.SkipN(2 + int(sz)); err != nil {
+					return err
+				}
+				continue
+			}
+
+			// Field ID
+			if _, err := r.SkipN(2); err != nil {
 				return err
 			}
-			if err := p.Skip(tp, maxdepth-1); err != nil {
+			// Field Value
+			if err := skipDecoderImpl(r, tp, maxdepth-1); err != nil {
 				return err
 			}
 		}
 	case MAP:
-		b, err := p.r.SkipN(6) // 1 byte key TType, 1 byte value TType, 4 bytes Len
+		b, err := r.SkipN(6) // 1 byte key TType, 1 byte value TType, 4 bytes Len
 		if err != nil {
 			return err
 		}
@@ -94,19 +96,31 @@ func (p SkipDecoderTpl[T]) Skip(t TType, maxdepth int) error {
 		}
 		ksz, vsz := int(typeToSize[kt]), int(typeToSize[vt])
 		if ksz > 0 && vsz > 0 {
-			_, err := p.r.SkipN(int(sz) * (ksz + vsz))
+			_, err := r.SkipN(int(sz) * (ksz + vsz))
 			return err
 		}
 		for i := int32(0); i < sz; i++ {
-			if err := p.Skip(kt, maxdepth-1); err != nil {
-				return err
+			if ksz > 0 {
+				if _, err := r.SkipN(ksz); err != nil {
+					return err
+				}
+			} else {
+				if err := skipDecoderImpl(r, kt, maxdepth-1); err != nil {
+					return err
+				}
 			}
-			if err := p.Skip(vt, maxdepth-1); err != nil {
-				return err
+			if vsz > 0 {
+				if _, err := r.SkipN(vsz); err != nil {
+					return err
+				}
+			} else {
+				if err := skipDecoderImpl(r, vt, maxdepth-1); err != nil {
+					return err
+				}
 			}
 		}
 	case SET, LIST:
-		b, err := p.r.SkipN(5) // 1 byte value type, 4 bytes Len
+		b, err := r.SkipN(5) // 1 byte value type, 4 bytes Len
 		if err != nil {
 			return err
 		}
@@ -115,11 +129,11 @@ func (p SkipDecoderTpl[T]) Skip(t TType, maxdepth int) error {
 			return errDataLength
 		}
 		if vsz := typeToSize[vt]; vsz > 0 {
-			_, err := p.r.SkipN(int(sz) * int(vsz))
+			_, err := r.SkipN(int(sz) * int(vsz))
 			return err
 		}
 		for i := int32(0); i < sz; i++ {
-			if err := p.Skip(vt, maxdepth-1); err != nil {
+			if err := skipDecoderImpl(r, vt, maxdepth-1); err != nil {
 				return err
 			}
 		}
