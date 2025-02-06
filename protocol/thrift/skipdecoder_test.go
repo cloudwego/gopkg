@@ -263,15 +263,57 @@ func BenchmarkSkipDecoder(b *testing.B) {
 	}
 	sr.Release()
 
-	b.ResetTimer()
-	b.RunParallel(func(pb *testing.PB) {
-		sr := &BytesSkipDecoder{}
-		for pb.Next() {
-			sr.Reset(bs)
+	b.Run("BytesSkipDecoder", func(b *testing.B) {
+		sr := NewBytesSkipDecoder(bs)
+		for i := 0; i < b.N; i++ {
 			_, err := sr.Next(STRUCT)
 			if err != nil {
 				b.Fatal(err)
 			}
+			sr.Reset(bs)
 		}
+		sr.Release()
 	})
+
+	b.Run("Parallel_BytesSkipDecoder", func(b *testing.B) {
+		b.RunParallel(func(pb *testing.PB) {
+			for pb.Next() {
+				sr := NewBytesSkipDecoder(bs)
+				_, err := sr.Next(STRUCT)
+				if err != nil {
+					b.Fatal(err)
+				}
+				sr.Release()
+			}
+		})
+	})
+
+	b.Run("ReaderSkipDecoder", func(b *testing.B) {
+		r := bytes.NewReader(bs)
+		sr := NewReaderSkipDecoder(r)
+		for i := 0; i < b.N; i++ {
+			_, err := sr.Next(STRUCT)
+			if err != nil {
+				b.Fatal(err)
+			}
+			r.Reset(bs)
+		}
+		sr.Release()
+	})
+
+	b.Run("Parallel_ReaderSkipDecoder", func(b *testing.B) {
+		b.RunParallel(func(pb *testing.PB) {
+			r := bytes.NewReader(bs)
+			for pb.Next() {
+				sr := NewReaderSkipDecoder(r)
+				_, err := sr.Next(STRUCT)
+				if err != nil {
+					b.Fatal(err)
+				}
+				sr.Release()
+				r.Reset(bs)
+			}
+		})
+	})
+
 }
