@@ -182,10 +182,15 @@ func (p *ReaderSkipDecoder) Grow(n int) {
 }
 
 func (p *ReaderSkipDecoder) growSlow(n int) {
-	// mcache will take care of the size of newb
-	newb := mcache.Malloc(p.n + n)
-	copy(newb, p.b[:p.n])
-	mcache.Free(p.b)
+	// mcache will take care of the new cap of newb to be power of 2
+	newb := mcache.Malloc((len(p.b) + n) | 255) // at least 255 bytes
+	newb = newb[:cap(newb)]
+	if p.n > 0 {
+		copy(newb, p.b[:p.n])
+	}
+	if p.b != nil {
+		mcache.Free(p.b)
+	}
 	p.b = newb
 }
 
