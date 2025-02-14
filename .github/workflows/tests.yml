@@ -6,8 +6,9 @@ jobs:
   unittest:
     strategy:
       matrix:
-        go: [ "1.18", "1.19", "1.20", "1.21", "1.22", "1.23" ]
-    runs-on: ubuntu-latest
+        go: [ "1.18", oldstable, stable ]
+        os: [ ubuntu-24.04-arm, ubuntu-latest ]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
@@ -23,8 +24,9 @@ jobs:
   benchmark:
     strategy:
       matrix:
-        go: [ "1.18", "1.19", "1.20", "1.21", "1.22", "1.23" ]
-    runs-on: ubuntu-latest
+        go: [ "1.18", oldstable, stable ]
+        os: [ ubuntu-24.04-arm, ubuntu-latest ]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
