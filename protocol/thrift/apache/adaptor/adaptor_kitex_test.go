@@ -81,6 +81,10 @@ func testAdaptor(t *testing.T, kitexStruct kitexGen, bp interface{}) {
 	}
 	err := adaptor.AdaptWrite(from, bp)
 	require.NoError(t, err)
+	if flushable, ok := bp.(interface{ Flush() error }); ok {
+		// simulates the flush action after encoding in kitex.
+		require.NoError(t, flushable.Flush())
+	}
 	err = adaptor.AdaptRead(to, bp)
 	require.NoError(t, err)
 	require.True(t, reflect.DeepEqual(from, to))
@@ -90,6 +94,11 @@ func testAdaptor(t *testing.T, kitexStruct kitexGen, bp interface{}) {
 // https://github.com/cloudwego/kitex/blob/v0.5.2/pkg/protocol/bthrift/apache/binary_protocol.go#L44
 type binaryProtocolV0100 struct {
 	trans mockRemoteByteBuffer
+}
+
+// Flush simulates the flush action after encoding in kitex.
+func (bp *binaryProtocolV0100) Flush() error {
+	return nil
 }
 
 // mockRemoteByteBuffer mocks the kitex remote.ByteBuffer, which is the core abstraction of buffer in Kitex.
@@ -121,6 +130,11 @@ type binaryProtocolV0110 struct {
 	bw bufiox.Writer
 }
 
+// Flush simulates the flush action after encoding with bufiox in kitex.
+func (bp *binaryProtocolV0110) Flush() error {
+	return bp.bw.Flush()
+}
+
 func mockBinaryProtocolV0110() *binaryProtocolV0110 {
 	buffer := bytes.NewBuffer(nil)
 	br := bufiox.NewDefaultReader(buffer)
@@ -142,6 +156,11 @@ type binaryProtocolV0130 struct {
 
 	br bufiox.Reader
 	bw bufiox.Writer
+}
+
+// Flush simulates the flush action after encoding with bufiox in kitex.
+func (bp *binaryProtocolV0130) Flush() error {
+	return bp.bw.Flush()
 }
 
 func mockBinaryProtocolV0130() *binaryProtocolV0130 {

@@ -30,7 +30,7 @@ func AdaptRead(p, iprot interface{}) (err error) {
 	// the struct should have the function 'FastRead'
 	fastStruct, ok := p.(fastReader)
 	if !ok {
-		return fmt.Errorf("no codec implementation available")
+		return fmt.Errorf("no codec implementation available for %T", p)
 	}
 
 	var rd io.Reader
@@ -63,8 +63,6 @@ func AdaptRead(p, iprot interface{}) (err error) {
 				case io.ReadWriter:
 					// if reader is not byteBuffer but is io.ReadWriter, it supposes to be apache thrift binary protocol
 					rd = r
-				default:
-					return fmt.Errorf("reader not ok")
 				}
 				break
 			}
@@ -81,7 +79,7 @@ func AdaptRead(p, iprot interface{}) (err error) {
 		buf, err = sd.Next(thrift.STRUCT)
 		sd.Release()
 	} else {
-		return fmt.Errorf("no available field for reader")
+		return fmt.Errorf("no available field for reader for %T", iprot)
 	}
 
 	if err != nil {
@@ -95,13 +93,13 @@ func AdaptRead(p, iprot interface{}) (err error) {
 }
 
 // AdaptWrite receive a kitex binary protocol and write it by given function.
-func AdaptWrite(p, oprot interface{}) error {
+func AdaptWrite(p, oprot interface{}) (err error) {
 	// for now, we use fastCodec, the struct should have the function 'FastWrite'
 	// but in old kitex_gen, the arguments of FastWrite is not from the same package.
 	// so we use reflection to handle this situation.
 	fastStruct, err := toFastCodec(p)
 	if err != nil {
-		return fmt.Errorf("no codec implementation available:%s", err)
+		return fmt.Errorf("no codec implementation available for %T, error: %s", p, err.Error())
 	}
 
 	var bw bufiox.Writer
@@ -118,9 +116,9 @@ func AdaptWrite(p, oprot interface{}) error {
 		//  eg: https://github.com/apache/thrift/blob/v0.13.0/lib/go/thrift/binary_protocol.go#L33
 		fieldNames := []string{"bw", "trans"}
 		for _, fn := range fieldNames {
-			writer, exist, err := getUnexportField(oprot, fn)
-			if err != nil {
-				return err
+			writer, exist, er := getUnexportField(oprot, fn)
+			if er != nil {
+				return er
 			}
 			if exist {
 				switch w := writer.(type) {
@@ -130,18 +128,28 @@ func AdaptWrite(p, oprot interface{}) error {
 					// if writer is from byteBuffer, Write() function is not always available
 					// so use an adaptor to implement Write()  by Malloc()
 					bw = bufiox.NewDefaultWriter(byteBuffer2ReadWriter(w))
+					defer func() {
+						if err == nil {
+							// flush the data back to the origin writer
+							err = bw.Flush()
+						}
+					}()
 				case io.ReadWriter:
 					// if writer is not byteBuffer but is io.ReadWriter, it supposes to be apache thrift binary protocol
 					bw = bufiox.NewDefaultWriter(w)
-				default:
-					return fmt.Errorf("writer type not ok")
+					defer func() {
+						if err == nil {
+							// flush the data back to the origin writer
+							err = bw.Flush()
+						}
+					}()
 				}
 				break
 			}
 		}
 	}
 	if bw == nil {
-		return fmt.Errorf("no available field for writer")
+		return fmt.Errorf("no available field for writer for %T", oprot)
 	}
 
 	// use fast codec
@@ -152,10 +160,7 @@ func AdaptWrite(p, oprot interface{}) error {
 	}
 	buf = buf[:n]
 	_, err = bw.WriteBinary(buf)
-	if err != nil {
-		return err
-	}
-	return bw.Flush()
+	return err
 }
 
 // getUnexportField retrieves the value of an unexported struct field.
