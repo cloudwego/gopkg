@@ -21,6 +21,51 @@ import (
 	"testing"
 )
 
+func TestFlushMultiTimes(t *testing.T) {
+	b := make([]byte, 0)
+	buf := NewBytesWriter(&b)
+
+	if _, err := buf.WriteBinary([]byte{1, 2, 3, 4, 5}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := buf.Flush(); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(b) != 5 {
+		t.Fatalf("After flush: %d, should be %d", len(b), 5)
+	}
+
+	if _, err := buf.WriteBinary([]byte{6, 7, 8}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := buf.Flush(); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(b) != 8 {
+		t.Fatalf("After flush: %d, should be %d", len(b), 8)
+	}
+
+	bs, err := buf.Malloc(2)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	bs[0] = 11
+	bs[1] = 11
+
+	if err = buf.Flush(); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(b) != 10 {
+		t.Fatalf("After flush: %d, should be %d", len(b), 10)
+	}
+}
+
 type mockReader struct {
 	dataSize int
 }
