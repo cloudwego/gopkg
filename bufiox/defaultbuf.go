@@ -46,9 +46,19 @@ var errNegativeCount = errors.New("bufiox: negative count")
 
 // NewDefaultReader returns a new DefaultReader that reads from r.
 func NewDefaultReader(rd io.Reader) *DefaultReader {
-	r := &DefaultReader{}
-	r.reset(rd, nil)
+	r := &DefaultReader{
+		rd: rd,
+	}
+	//r.reset(rd, nil)
 	return r
+}
+
+func (r *DefaultReader) Reset() {
+	r.reset(nil, nil)
+}
+
+func (r *DefaultReader) SetReader(rd io.Reader) {
+	r.rd = rd
 }
 
 // NewBytesReader returns a new DefaultReader that reads from buf[:len(buf)].
@@ -236,6 +246,14 @@ func NewDefaultWriter(wd io.Writer) *DefaultWriter {
 	w := &DefaultWriter{}
 	w.reset(wd, nil, false)
 	return w
+}
+
+func (r *DefaultWriter) Reset() {
+	r.reset(nil, nil, false)
+}
+
+func (r *DefaultWriter) SetWriter(wd io.Writer) {
+	r.wd = wd
 }
 
 // NewBytesWriter returns a new DefaultWriter that writes to buf[len(buf):cap(buf)].
