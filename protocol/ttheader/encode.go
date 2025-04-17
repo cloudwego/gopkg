@@ -110,6 +110,7 @@ const (
 	FrameTypeHeader  = "2"
 	FrameTypeData    = "3"
 	FrameTypeTrailer = "4"
+	FrameTypeRst     = "5"
 	FrameTypeInvalid = ""
 )
 

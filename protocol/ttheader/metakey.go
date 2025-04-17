@@ -62,6 +62,12 @@ const (
 	// the connection peer will shutdown later,so it send back the header to tell client to close the connection.
 	HeaderConnectionReadyToReset = "crrst"
 	HeaderProcessAtTime          = "K_ProcessAtTime"
+	// HeaderTTStreamCancelPath is used in the TTHeader Streaming Rst Frame to record the services in the cascading cancel path
+	// The format of the value is: A | A,B,C
+	// Take A -> B -> C as example, A invoked cancel actively:
+	// A -> B send Rst Frame, ttscp: A
+	// B -> C send Rst Frame, ttscp: A,B
+	HeaderTTStreamCancelPath = "ttscp"
 )
 
 // key of acl token
