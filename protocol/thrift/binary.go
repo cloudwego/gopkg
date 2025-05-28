@@ -23,6 +23,7 @@ import (
 	"unsafe"
 
 	"github.com/bytedance/gopkg/lang/span"
+
 	"github.com/cloudwego/gopkg/unsafex"
 )
 
