@@ -7,21 +7,21 @@ import (
 	"github.com/cloudwego/gopkg/unsafex"
 )
 
-const padLength = 4096
+const padLength = 1 << 13
 
-type BufferPool interface {
+type XBufferPool interface {
 	Get(n int) []byte
 	Free()
 }
 
-type WriteBuffer struct {
+type XWriteBuffer struct {
 	off  int // write offset of buf
 	buf  []byte
 	bufs [][]byte
-	pool BufferPool
+	pool XBufferPool
 }
 
-func (b *WriteBuffer) Freeze() ([][]byte, BufferPool) {
+func (b *XWriteBuffer) Freeze() ([][]byte, XBufferPool) {
 	if b.off > 0 {
 		b.bufs = append(b.bufs, b.buf[:b.off])
 		b.buf = b.buf[b.off:]
@@ -30,7 +30,7 @@ func (b *WriteBuffer) Freeze() ([][]byte, BufferPool) {
 	return b.bufs, b.pool
 }
 
-func (b *WriteBuffer) grow(n int) {
+func (b *XWriteBuffer) grow(n int) {
 	b.buf = b.buf[:b.off]
 	b.bufs = append(b.bufs, b.buf)
 	b.off = 0
@@ -50,7 +50,7 @@ var XBuffer XBufferProtocol
 
 type XBufferProtocol struct{}
 
-func (XBufferProtocol) WriteMessageBegin(b *WriteBuffer, name string, typeID TMessageType, seq int32) {
+func (XBufferProtocol) WriteMessageBegin(b *XWriteBuffer, name string, typeID TMessageType, seq int32) {
 	if len(b.buf)-b.off < 4+(4+len(name))+4 {
 		b.grow(maxInt(padLength, 4+(4+len(name))+4))
 	}
@@ -61,7 +61,7 @@ func (XBufferProtocol) WriteMessageBegin(b *WriteBuffer, name string, typeID TMe
 	b.off = off + 4
 }
 
-func (XBufferProtocol) WriteFieldBegin(b *WriteBuffer, typeID TType, id int16) {
+func (XBufferProtocol) WriteFieldBegin(b *XWriteBuffer, typeID TType, id int16) {
 	if len(b.buf)-b.off < 3 {
 		b.grow(padLength)
 	}
@@ -70,7 +70,7 @@ func (XBufferProtocol) WriteFieldBegin(b *WriteBuffer, typeID TType, id int16) {
 	b.off += 3
 }
 
-func (XBufferProtocol) WriteFieldStop(b *WriteBuffer) {
+func (XBufferProtocol) WriteFieldStop(b *XWriteBuffer) {
 	if len(b.buf)-b.off < 1 {
 		b.grow(padLength)
 	}
@@ -78,7 +78,7 @@ func (XBufferProtocol) WriteFieldStop(b *WriteBuffer) {
 	b.off += 1
 }
 
-func (XBufferProtocol) WriteMapBegin(b *WriteBuffer, kt, vt TType, size int) {
+func (XBufferProtocol) WriteMapBegin(b *XWriteBuffer, kt, vt TType, size int) {
 	if len(b.buf)-b.off < 6 {
 		b.grow(padLength)
 	}
@@ -88,7 +88,7 @@ func (XBufferProtocol) WriteMapBegin(b *WriteBuffer, kt, vt TType, size int) {
 	b.off += 6
 }
 
-func (XBufferProtocol) WriteListBegin(b *WriteBuffer, et TType, size int) {
+func (XBufferProtocol) WriteListBegin(b *XWriteBuffer, et TType, size int) {
 	if len(b.buf)-b.off < 5 {
 		b.grow(padLength)
 	}
@@ -97,7 +97,7 @@ func (XBufferProtocol) WriteListBegin(b *WriteBuffer, et TType, size int) {
 	b.off += 5
 }
 
-func (XBufferProtocol) WriteSetBegin(b *WriteBuffer, et TType, size int) {
+func (XBufferProtocol) WriteSetBegin(b *XWriteBuffer, et TType, size int) {
 	if len(b.buf)-b.off < 5 {
 		b.grow(padLength)
 	}
@@ -106,7 +106,7 @@ func (XBufferProtocol) WriteSetBegin(b *WriteBuffer, et TType, size int) {
 	b.off += 5
 }
 
-func (XBufferProtocol) WriteBool(b *WriteBuffer, v bool) {
+func (XBufferProtocol) WriteBool(b *XWriteBuffer, v bool) {
 	if len(b.buf)-b.off < 1 {
 		b.grow(padLength)
 	}
@@ -118,7 +118,7 @@ func (XBufferProtocol) WriteBool(b *WriteBuffer, v bool) {
 	b.off += 1
 }
 
-func (XBufferProtocol) WriteByte(b *WriteBuffer, v int8) {
+func (XBufferProtocol) WriteByte(b *XWriteBuffer, v int8) {
 	if len(b.buf)-b.off < 1 {
 		b.grow(padLength)
 	}
@@ -126,7 +126,7 @@ func (XBufferProtocol) WriteByte(b *WriteBuffer, v int8) {
 	b.off += 1
 }
 
-func (XBufferProtocol) WriteI16(b *WriteBuffer, v int16) {
+func (XBufferProtocol) WriteI16(b *XWriteBuffer, v int16) {
 	if len(b.buf)-b.off < 2 {
 		b.grow(padLength)
 	}
@@ -134,7 +134,7 @@ func (XBufferProtocol) WriteI16(b *WriteBuffer, v int16) {
 	b.off += 2
 }
 
-func (XBufferProtocol) WriteI32(b *WriteBuffer, v int32) {
+func (XBufferProtocol) WriteI32(b *XWriteBuffer, v int32) {
 	if len(b.buf)-b.off < 4 {
 		b.grow(padLength)
 	}
@@ -142,7 +142,7 @@ func (XBufferProtocol) WriteI32(b *WriteBuffer, v int32) {
 	b.off += 4
 }
 
-func (XBufferProtocol) WriteI64(b *WriteBuffer, v int64) {
+func (XBufferProtocol) WriteI64(b *XWriteBuffer, v int64) {
 	if len(b.buf)-b.off < 8 {
 		b.grow(padLength)
 	}
@@ -150,7 +150,7 @@ func (XBufferProtocol) WriteI64(b *WriteBuffer, v int64) {
 	b.off += 8
 }
 
-func (XBufferProtocol) WriteDouble(b *WriteBuffer, v float64) {
+func (XBufferProtocol) WriteDouble(b *XWriteBuffer, v float64) {
 	if len(b.buf)-b.off < 8 {
 		b.grow(padLength)
 	}
@@ -158,16 +158,24 @@ func (XBufferProtocol) WriteDouble(b *WriteBuffer, v float64) {
 	b.off += 8
 }
 
-func (XBufferProtocol) writeDirect(b *WriteBuffer, v []byte) {
-	if b.off > 0 {
-		b.bufs = append(b.bufs, b.buf[:b.off])
-		b.buf = b.buf[b.off:]
-		b.off = 0
+func (p XBufferProtocol) writeDirect(b *XWriteBuffer, v []byte) {
+	// write header
+	if len(b.buf)-b.off < 4 {
+		b.grow(padLength)
 	}
+	binary.BigEndian.PutUint32(b.buf[b.off:], uint32(len(v)))
+	b.off += 4
+
+	// relink buffers
+	b.bufs = append(b.bufs, b.buf[:b.off])
+	b.buf = b.buf[b.off:]
+	b.off = 0
+
+	// write directly
 	b.bufs = append(b.bufs, v)
 }
 
-func (p XBufferProtocol) WriteBinary(b *WriteBuffer, v []byte) {
+func (p XBufferProtocol) WriteBinary(b *XWriteBuffer, v []byte) {
 	if len(v) >= nocopyWriteThreshold {
 		p.writeDirect(b, v)
 		return
@@ -176,10 +184,10 @@ func (p XBufferProtocol) WriteBinary(b *WriteBuffer, v []byte) {
 		b.grow(maxInt(padLength, 4+len(v)))
 	}
 	binary.BigEndian.PutUint32(b.buf[b.off:], uint32(len(v)))
-	b.off = 4 + copy(b.buf[b.off+4:], v)
+	b.off += 4 + copy(b.buf[b.off+4:], v)
 }
 
-func (p XBufferProtocol) WriteString(b *WriteBuffer, v string) {
+func (p XBufferProtocol) WriteString(b *XWriteBuffer, v string) {
 	if len(v) >= nocopyWriteThreshold {
 		p.writeDirect(b, unsafex.StringToBinary(v))
 		return
@@ -188,5 +196,24 @@ func (p XBufferProtocol) WriteString(b *WriteBuffer, v string) {
 		b.grow(maxInt(padLength, 4+len(v)))
 	}
 	binary.BigEndian.PutUint32(b.buf[b.off:], uint32(len(v)))
-	b.off = 4 + copy(b.buf[b.off+4:], v)
+	b.off += 4 + copy(b.buf[b.off+4:], v)
+}
+
+func (p XBufferProtocol) RawWrite(b *XWriteBuffer, v []byte) {
+	if len(v) >= nocopyWriteThreshold {
+		// relink buffers
+		if b.off > 0 {
+			b.bufs = append(b.bufs, b.buf[:b.off])
+			b.buf = b.buf[b.off:]
+			b.off = 0
+		}
+
+		// write directly
+		b.bufs = append(b.bufs, v)
+		return
+	}
+	if len(b.buf)-b.off < len(v) {
+		b.grow(maxInt(padLength, len(v)))
+	}
+	b.off += copy(b.buf[b.off:], v)
 }
