@@ -53,6 +53,7 @@ func (b *XWriteBuffer) Free() {
 }
 
 // MallocN malloc n bytes from buffer, if buf is not enough, it will grow.
+//
 // MAKE SURE IT CAN BE INLINE:
 // `can inline (*XWriteBuffer).MallocN with cost 79`
 func (b *XWriteBuffer) MallocN(n int) (buf []byte) {
@@ -74,7 +75,7 @@ func (b *XWriteBuffer) growSlow(n int) []byte {
 	if n < padLength {
 		n = padLength
 	}
-	buf := mcache.Malloc(n, n)
+	buf := mcache.Malloc(n)
 	buf = buf[:cap(buf)]
 	b.pool = append(b.pool, buf)
 	b.buf = buf
