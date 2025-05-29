@@ -3,39 +3,69 @@ package thrift
 import (
 	"encoding/binary"
 	"math"
+	"sync"
+
+	"github.com/bytedance/gopkg/lang/mcache"
 
 	"github.com/cloudwego/gopkg/unsafex"
 )
 
 const padLength = 1 << 13
 
-type XBufferPool interface {
-	Get(n int) []byte
-	Free()
+var xwriteBufferPool = sync.Pool{
+	New: func() interface{} {
+		return &XWriteBuffer{
+			bufs: make([][]byte, 0, 16),
+			pool: make([][]byte, 0, 16),
+		}
+	},
 }
 
 type XWriteBuffer struct {
 	off  int // write offset of buf
 	buf  []byte
 	bufs [][]byte
-	pool XBufferPool
+	pool [][]byte
 }
 
-func (b *XWriteBuffer) Freeze() ([][]byte, XBufferPool) {
+func NewXWriteBuffer() *XWriteBuffer {
+	return xwriteBufferPool.Get().(*XWriteBuffer)
+}
+
+func (b *XWriteBuffer) Bytes() [][]byte {
 	if b.off > 0 {
 		b.bufs = append(b.bufs, b.buf[:b.off])
 		b.buf = b.buf[b.off:]
 		b.off = 0
 	}
-	return b.bufs, b.pool
+	return b.bufs
+}
+
+func (b *XWriteBuffer) Free() {
+	b.off = 0
+	b.buf = nil
+	for i := range b.bufs {
+		b.bufs[i] = nil
+	}
+	b.bufs = b.bufs[:0]
+	for i := range b.pool {
+		mcache.Free(b.pool[i])
+		b.pool[i] = nil
+	}
+	b.pool = b.pool[:0]
+	xwriteBufferPool.Put(b)
 }
 
 func (b *XWriteBuffer) grow(n int) {
-	b.buf = b.buf[:b.off]
-	b.bufs = append(b.bufs, b.buf)
-	b.off = 0
+	if b.off > 0 {
+		b.buf = b.buf[:b.off]
+		b.bufs = append(b.bufs, b.buf)
+		b.off = 0
+	}
 	// refresh buf
-	buf := b.pool.Get(n)
+	buf := mcache.Malloc(n, n)
+	buf = buf[:cap(buf)]
+	b.pool = append(b.pool, buf)
 	b.buf = buf
 }
 
