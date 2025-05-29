@@ -28,64 +28,84 @@ var XBuffer XBufferProtocol
 type XBufferProtocol struct{}
 
 // Skip skips over the value for the given type using Go implementation.
-func (p XBufferProtocol) Skip(b *xbuf.XReadBuffer, uf *UnknownFields, t TType) error {
-	return p.skipType(b, uf, t, defaultRecursionDepth)
+func (p XBufferProtocol) Skip(b *xbuf.XReadBuffer, t TType, receiveUnknownFields bool) ([]byte, error) {
+	var unknownFields []byte
+	err := p.skipType(b, t, defaultRecursionDepth, unknownFields, receiveUnknownFields)
+	return unknownFields, err
 }
 
-func (p XBufferProtocol) skipType(b *xbuf.XReadBuffer, uf *UnknownFields, t TType, maxdepth int) error {
+func (p XBufferProtocol) skipType(b *xbuf.XReadBuffer, t TType, maxdepth int, unknownFields []byte, receiveUnknownFields bool, ) error {
 	if maxdepth == 0 {
 		return errDepthLimitExceeded
 	}
 	if n := typeToSize[t]; n > 0 {
 		buf := b.ReadN(int(n))
-		if uf != nil {
-			uf.Append(buf)
+		if receiveUnknownFields {
+			unknownFields = append(unknownFields, buf...)
 		}
 		return nil
 	}
 	var err error
 	switch t {
 	case STRING:
-		p.skipstr(b, uf)
+		tmp := b.ReadN(4)
+		n := binary.BigEndian.Uint32(tmp)
+		s := b.ReadN(int(n))
+		if receiveUnknownFields {
+			unknownFields = append(unknownFields, tmp...)
+			unknownFields = append(unknownFields, s...)
+		}
 		return nil
 	case MAP:
 		buf := b.ReadN(6)
-		if uf != nil {
-			uf.Append(buf)
+		if receiveUnknownFields {
+			unknownFields = append(unknownFields, buf...)
 		}
 		kt, vt, sz := TType(buf[0]), TType(buf[1]), binary.BigEndian.Uint32(buf[2:])
 		ksz, vsz := int(typeToSize[kt]), int(typeToSize[vt])
 		if ksz > 0 && vsz > 0 { // fast path, fast skip
 			mapkvsize := (int(sz) * (ksz + vsz))
 			buf = b.ReadN(mapkvsize)
-			if uf != nil {
-				uf.Append(buf)
+			if receiveUnknownFields {
+				unknownFields = append(unknownFields, buf...)
 			}
 			return nil
 		}
 		for j := int32(0); j < int32(sz); j++ {
 			if ksz > 0 {
 				kbuf := b.ReadN(ksz)
-				if uf != nil {
-					uf.Append(kbuf)
+				if receiveUnknownFields {
+					unknownFields = append(unknownFields, kbuf...)
 				}
 			} else if kt == STRING {
-				p.skipstr(b, uf)
+				tmp := b.ReadN(4)
+				n := binary.BigEndian.Uint32(tmp)
+				s := b.ReadN(int(n))
+				if receiveUnknownFields {
+					unknownFields = append(unknownFields, tmp...)
+					unknownFields = append(unknownFields, s...)
+				}
 			} else {
-				err = p.skipType(b, uf, kt, maxdepth-1)
+				err = p.skipType(b, kt, maxdepth-1, unknownFields, receiveUnknownFields)
 				if err != nil {
 					return err
 				}
 			}
 			if vsz > 0 {
 				vbuf := b.ReadN(vsz)
-				if uf != nil {
-					uf.Append(vbuf)
+				if receiveUnknownFields {
+					unknownFields = append(unknownFields, vbuf...)
 				}
 			} else if vt == STRING {
-				p.skipstr(b, uf)
+				tmp := b.ReadN(4)
+				n := binary.BigEndian.Uint32(tmp)
+				s := b.ReadN(int(n))
+				if receiveUnknownFields {
+					unknownFields = append(unknownFields, tmp...)
+					unknownFields = append(unknownFields, s...)
+				}
 			} else {
-				err = p.skipType(b, uf, vt, maxdepth-1)
+				err = p.skipType(b, vt, maxdepth-1, unknownFields, receiveUnknownFields)
 				if err != nil {
 					return err
 				}
@@ -94,29 +114,35 @@ func (p XBufferProtocol) skipType(b *xbuf.XReadBuffer, uf *UnknownFields, t TTyp
 		return nil
 	case LIST, SET:
 		buf := b.ReadN(5)
-		if uf != nil {
-			uf.Append(buf)
+		if receiveUnknownFields {
+			unknownFields = append(unknownFields, buf...)
 		}
 		vt, sz := TType(buf[0]), binary.BigEndian.Uint32(buf[1:])
 		vsz := int(typeToSize[vt])
 		if vsz > 0 { // fast path, fast skip
 			listvsize := int(sz) * vsz
 			buf = b.ReadN(listvsize)
-			if uf != nil {
-				uf.Append(buf)
+			if receiveUnknownFields {
+				unknownFields = append(unknownFields, buf...)
 			}
 			return nil
 		}
 		for j := int32(0); j < int32(sz); j++ {
 			if vsz > 0 {
 				vbuf := b.ReadN(vsz)
-				if uf != nil {
-					uf.Append(vbuf)
+				if receiveUnknownFields {
+					unknownFields = append(unknownFields, vbuf...)
 				}
 			} else if vt == STRING {
-				p.skipstr(b, uf)
+				tmp := b.ReadN(4)
+				n := binary.BigEndian.Uint32(tmp)
+				s := b.ReadN(int(n))
+				if receiveUnknownFields {
+					unknownFields = append(unknownFields, tmp...)
+					unknownFields = append(unknownFields, s...)
+				}
 			} else {
-				err = p.skipType(b, uf, vt, maxdepth-1)
+				err = p.skipType(b, vt, maxdepth-1, unknownFields, receiveUnknownFields)
 				if err != nil {
 					return err
 				}
@@ -126,26 +152,32 @@ func (p XBufferProtocol) skipType(b *xbuf.XReadBuffer, uf *UnknownFields, t TTyp
 	case STRUCT:
 		for {
 			buf := b.ReadN(1) // TType
-			if uf != nil {
-				uf.Append(buf)
+			if receiveUnknownFields {
+				unknownFields = append(unknownFields, buf...)
 			}
 			ft := TType(buf[0])
 			if ft == STOP {
 				return nil
 			}
 			buf = b.ReadN(2) // Field ID
-			if uf != nil {
-				uf.Append(buf)
+			if receiveUnknownFields {
+				unknownFields = append(unknownFields, buf...)
 			}
 			if typeToSize[ft] > 0 {
 				buf = b.ReadN(int(typeToSize[ft]))
-				if uf != nil {
-					uf.Append(buf)
+				if receiveUnknownFields {
+					unknownFields = append(unknownFields, buf...)
 				}
 			} else if ft == STRING {
-				p.skipstr(b, uf)
+				tmp := b.ReadN(4)
+				n := binary.BigEndian.Uint32(tmp)
+				s := b.ReadN(int(n))
+				if receiveUnknownFields {
+					unknownFields = append(unknownFields, tmp...)
+					unknownFields = append(unknownFields, s...)
+				}
 			} else {
-				err = p.skipType(b, uf, ft, maxdepth-1)
+				err = p.skipType(b, ft, maxdepth-1, unknownFields, receiveUnknownFields)
 				if err != nil {
 					return err
 				}
@@ -153,16 +185,6 @@ func (p XBufferProtocol) skipType(b *xbuf.XReadBuffer, uf *UnknownFields, t TTyp
 		}
 	default:
 		return NewProtocolException(INVALID_DATA, fmt.Sprintf("unknown data type %d", t))
-	}
-}
-
-func (p XBufferProtocol) skipstr(b *xbuf.XReadBuffer, uf *UnknownFields) {
-	tmp := b.ReadN(4)
-	n := binary.BigEndian.Uint32(tmp)
-	s := b.ReadN(int(n))
-	if uf != nil {
-		uf.Append(tmp)
-		uf.Append(s)
 	}
 }
 
