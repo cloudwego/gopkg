@@ -32,7 +32,7 @@ func (p GridBufferProtocol) Skip(b *gridbuf.ReadBuffer, t TType, unknownFields [
 	return p.skipType(b, t, defaultRecursionDepth, unknownFields, receiveUnknownFields)
 }
 
-func (p GridBufferProtocol) skipType(b *gridbuf.ReadBuffer, t TType, maxdepth int, unknownFields []byte, receiveUnknownFields bool, ) ([]byte, error) {
+func (p GridBufferProtocol) skipType(b *gridbuf.ReadBuffer, t TType, maxdepth int, unknownFields []byte, receiveUnknownFields bool) ([]byte, error) {
 	if maxdepth == 0 {
 		return unknownFields, errDepthLimitExceeded
 	}
