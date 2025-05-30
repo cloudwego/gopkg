@@ -127,3 +127,27 @@ func TestWriteBuffer_WriteDirect(t *testing.T) {
 		}
 	}
 }
+
+func BenchmarkWriteBuf_MallocN(b *testing.B) {
+	x := NewWriteBuffer()
+	defer x.Free()
+
+	var tmp []byte
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		tmp = x.MallocN(1)
+	}
+	_ = tmp
+}
+
+func BenchmarkBytes_Write(b *testing.B) {
+	bytes := make([]byte, b.N)
+	var off int
+	var tmp []byte
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		tmp = bytes[off : off+1]
+		off++
+	}
+	_ = tmp
+}

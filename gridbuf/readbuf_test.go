@@ -143,3 +143,29 @@ func TestReadBuf_NoCrossPad(t *testing.T) {
 		return buf
 	})
 }
+
+func BenchmarkReadBuf_ReadN(b *testing.B) {
+	bytes := make([]byte, b.N)
+	buf := NewReadBuffer([][]byte{bytes})
+	defer buf.Free()
+
+	var tmp []byte
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		tmp = buf.ReadN(1)
+	}
+	_ = tmp
+}
+
+func BenchmarkBytes_Read(b *testing.B) {
+	bytes := make([]byte, b.N)
+
+	var off int
+	var tmp []byte
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		tmp = bytes[off : off+1]
+		off++
+	}
+	_ = tmp
+}
