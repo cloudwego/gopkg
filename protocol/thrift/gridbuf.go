@@ -37,7 +37,7 @@ func (p GridBufferProtocol) skipType(b *gridbuf.ReadBuffer, t TType, maxdepth in
 		return unknownFields, errDepthLimitExceeded
 	}
 	if n := typeToSize[t]; n > 0 {
-		buf := b.ReadN(int(n))
+		buf := b.ReadN(int(n))[:n]
 		if receiveUnknownFields {
 			unknownFields = append(unknownFields, buf...)
 		}
@@ -46,16 +46,16 @@ func (p GridBufferProtocol) skipType(b *gridbuf.ReadBuffer, t TType, maxdepth in
 	var err error
 	switch t {
 	case STRING:
-		tmp := b.ReadN(4)
+		tmp := b.ReadN(4)[:4]
 		n := binary.BigEndian.Uint32(tmp)
-		s := b.ReadN(int(n))
+		s := b.ReadN(int(n))[:n]
 		if receiveUnknownFields {
 			unknownFields = append(unknownFields, tmp...)
 			unknownFields = append(unknownFields, s...)
 		}
 		return unknownFields, nil
 	case MAP:
-		buf := b.ReadN(6)
+		buf := b.ReadN(6)[:6]
 		if receiveUnknownFields {
 			unknownFields = append(unknownFields, buf...)
 		}
@@ -63,7 +63,7 @@ func (p GridBufferProtocol) skipType(b *gridbuf.ReadBuffer, t TType, maxdepth in
 		ksz, vsz := int(typeToSize[kt]), int(typeToSize[vt])
 		if ksz > 0 && vsz > 0 { // fast path, fast skip
 			mapkvsize := (int(sz) * (ksz + vsz))
-			buf = b.ReadN(mapkvsize)
+			buf = b.ReadN(mapkvsize)[:mapkvsize]
 			if receiveUnknownFields {
 				unknownFields = append(unknownFields, buf...)
 			}
@@ -71,14 +71,14 @@ func (p GridBufferProtocol) skipType(b *gridbuf.ReadBuffer, t TType, maxdepth in
 		}
 		for j := int32(0); j < int32(sz); j++ {
 			if ksz > 0 {
-				kbuf := b.ReadN(ksz)
+				kbuf := b.ReadN(ksz)[:ksz]
 				if receiveUnknownFields {
 					unknownFields = append(unknownFields, kbuf...)
 				}
 			} else if kt == STRING {
-				tmp := b.ReadN(4)
+				tmp := b.ReadN(4)[:4]
 				n := binary.BigEndian.Uint32(tmp)
-				s := b.ReadN(int(n))
+				s := b.ReadN(int(n))[:n]
 				if receiveUnknownFields {
 					unknownFields = append(unknownFields, tmp...)
 					unknownFields = append(unknownFields, s...)
@@ -90,14 +90,14 @@ func (p GridBufferProtocol) skipType(b *gridbuf.ReadBuffer, t TType, maxdepth in
 				}
 			}
 			if vsz > 0 {
-				vbuf := b.ReadN(vsz)
+				vbuf := b.ReadN(vsz)[:vsz]
 				if receiveUnknownFields {
 					unknownFields = append(unknownFields, vbuf...)
 				}
 			} else if vt == STRING {
-				tmp := b.ReadN(4)
+				tmp := b.ReadN(4)[:4]
 				n := binary.BigEndian.Uint32(tmp)
-				s := b.ReadN(int(n))
+				s := b.ReadN(int(n))[:n]
 				if receiveUnknownFields {
 					unknownFields = append(unknownFields, tmp...)
 					unknownFields = append(unknownFields, s...)
@@ -111,7 +111,7 @@ func (p GridBufferProtocol) skipType(b *gridbuf.ReadBuffer, t TType, maxdepth in
 		}
 		return unknownFields, nil
 	case LIST, SET:
-		buf := b.ReadN(5)
+		buf := b.ReadN(5)[:5]
 		if receiveUnknownFields {
 			unknownFields = append(unknownFields, buf...)
 		}
@@ -119,7 +119,7 @@ func (p GridBufferProtocol) skipType(b *gridbuf.ReadBuffer, t TType, maxdepth in
 		vsz := int(typeToSize[vt])
 		if vsz > 0 { // fast path, fast skip
 			listvsize := int(sz) * vsz
-			buf = b.ReadN(listvsize)
+			buf = b.ReadN(listvsize)[:listvsize]
 			if receiveUnknownFields {
 				unknownFields = append(unknownFields, buf...)
 			}
@@ -127,14 +127,14 @@ func (p GridBufferProtocol) skipType(b *gridbuf.ReadBuffer, t TType, maxdepth in
 		}
 		for j := int32(0); j < int32(sz); j++ {
 			if vsz > 0 {
-				vbuf := b.ReadN(vsz)
+				vbuf := b.ReadN(vsz)[:vsz]
 				if receiveUnknownFields {
 					unknownFields = append(unknownFields, vbuf...)
 				}
 			} else if vt == STRING {
-				tmp := b.ReadN(4)
+				tmp := b.ReadN(4)[:4]
 				n := binary.BigEndian.Uint32(tmp)
-				s := b.ReadN(int(n))
+				s := b.ReadN(int(n))[:n]
 				if receiveUnknownFields {
 					unknownFields = append(unknownFields, tmp...)
 					unknownFields = append(unknownFields, s...)
@@ -149,7 +149,7 @@ func (p GridBufferProtocol) skipType(b *gridbuf.ReadBuffer, t TType, maxdepth in
 		return unknownFields, nil
 	case STRUCT:
 		for {
-			buf := b.ReadN(1) // TType
+			buf := b.ReadN(1)[:1] // TType
 			if receiveUnknownFields {
 				unknownFields = append(unknownFields, buf...)
 			}
@@ -157,19 +157,19 @@ func (p GridBufferProtocol) skipType(b *gridbuf.ReadBuffer, t TType, maxdepth in
 			if ft == STOP {
 				return unknownFields, nil
 			}
-			buf = b.ReadN(2) // Field ID
+			buf = b.ReadN(2)[:2] // Field ID
 			if receiveUnknownFields {
 				unknownFields = append(unknownFields, buf...)
 			}
-			if typeToSize[ft] > 0 {
-				buf = b.ReadN(int(typeToSize[ft]))
+			if sz := typeToSize[ft]; sz > 0 {
+				buf = b.ReadN(int(sz))[:sz]
 				if receiveUnknownFields {
 					unknownFields = append(unknownFields, buf...)
 				}
 			} else if ft == STRING {
-				tmp := b.ReadN(4)
+				tmp := b.ReadN(4)[:4]
 				n := binary.BigEndian.Uint32(tmp)
-				s := b.ReadN(int(n))
+				s := b.ReadN(int(n))[:n]
 				if receiveUnknownFields {
 					unknownFields = append(unknownFields, tmp...)
 					unknownFields = append(unknownFields, s...)
