@@ -1,4 +1,18 @@
-package xbuf
+// Copyright 2025 CloudWeGo Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package gridbuf
 
 import (
 	"runtime/debug"
@@ -6,8 +20,8 @@ import (
 	"testing"
 )
 
-func TestXWriteBuffer_Inline(t *testing.T) {
-	var b *XWriteBuffer
+func TestWriteBuffer_Inline(t *testing.T) {
+	var b *WriteBuffer
 
 	defer func() {
 		r := recover()
@@ -23,8 +37,8 @@ func TestXWriteBuffer_Inline(t *testing.T) {
 	b.MallocN(10)
 }
 
-func TestXWriteBuffer_CrossPad(t *testing.T) {
-	b := NewXWriteBuffer()
+func TestWriteBuffer_CrossPad(t *testing.T) {
+	b := NewWriteBuffer()
 	defer b.Free()
 	buf := b.MallocN(padLength - 1)
 	for i := range buf {
@@ -56,8 +70,8 @@ func TestXWriteBuffer_CrossPad(t *testing.T) {
 	}
 }
 
-func TestXWriteBuffer_NoCrossPad(t *testing.T) {
-	b := NewXWriteBuffer()
+func TestWriteBuffer_NoCrossPad(t *testing.T) {
+	b := NewWriteBuffer()
 	defer b.Free()
 	buf := b.MallocN(1024)
 	for i := range buf {
@@ -84,8 +98,8 @@ func TestXWriteBuffer_NoCrossPad(t *testing.T) {
 	}
 }
 
-func TestXWriteBuffer_WriteDirect(t *testing.T) {
-	b := NewXWriteBuffer()
+func TestWriteBuffer_WriteDirect(t *testing.T) {
+	b := NewWriteBuffer()
 	defer b.Free()
 	buf := b.MallocN(1024)
 	for i := range buf {

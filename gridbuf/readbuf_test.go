@@ -1,4 +1,18 @@
-package xbuf
+// Copyright 2025 CloudWeGo Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package gridbuf
 
 import (
 	"runtime/debug"
@@ -7,7 +21,7 @@ import (
 )
 
 func TestReadBuf_Inline(t *testing.T) {
-	var x *XReadBuffer
+	var x *ReadBuffer
 
 	defer func() {
 		r := recover()
@@ -36,7 +50,7 @@ func TestReadBuf_Inline(t *testing.T) {
 }
 
 func TestReadBuf_CrossPad(t *testing.T) {
-	tf := func(getBuf func(x *XReadBuffer, n int) []byte) {
+	tf := func(getBuf func(x *ReadBuffer, n int) []byte) {
 		ori1 := make([]byte, padLength)
 		for i := range ori1 {
 			ori1[i] = 'a'
@@ -46,7 +60,7 @@ func TestReadBuf_CrossPad(t *testing.T) {
 			ori2[i] = 'b'
 		}
 		ori := [][]byte{ori1, ori2}
-		x := NewXReadBuffer(ori)
+		x := NewReadBuffer(ori)
 		defer x.Free()
 		buf := getBuf(x, padLength-1)
 		if len(buf) < padLength-1 {
@@ -77,10 +91,10 @@ func TestReadBuf_CrossPad(t *testing.T) {
 			}
 		}
 	}
-	tf(func(x *XReadBuffer, n int) []byte {
+	tf(func(x *ReadBuffer, n int) []byte {
 		return x.ReadN(n)
 	})
-	tf(func(x *XReadBuffer, n int) []byte {
+	tf(func(x *ReadBuffer, n int) []byte {
 		buf := make([]byte, n)
 		x.CopyBytes(buf)
 		return buf
@@ -88,7 +102,7 @@ func TestReadBuf_CrossPad(t *testing.T) {
 }
 
 func TestReadBuf_NoCrossPad(t *testing.T) {
-	tf := func(getBuf func(x *XReadBuffer, n int) []byte) {
+	tf := func(getBuf func(x *ReadBuffer, n int) []byte) {
 		ori1 := make([]byte, padLength/2)
 		for i := range ori1 {
 			ori1[i] = 'a'
@@ -98,7 +112,7 @@ func TestReadBuf_NoCrossPad(t *testing.T) {
 			ori2[i] = 'b'
 		}
 		ori := append(ori1, ori2...)
-		x := NewXReadBuffer([][]byte{ori})
+		x := NewReadBuffer([][]byte{ori})
 		defer x.Free()
 
 		buf := getBuf(x, padLength/2)
@@ -120,10 +134,10 @@ func TestReadBuf_NoCrossPad(t *testing.T) {
 			}
 		}
 	}
-	tf(func(x *XReadBuffer, n int) []byte {
+	tf(func(x *ReadBuffer, n int) []byte {
 		return x.ReadN(n)
 	})
-	tf(func(x *XReadBuffer, n int) []byte {
+	tf(func(x *ReadBuffer, n int) []byte {
 		buf := make([]byte, n)
 		x.CopyBytes(buf)
 		return buf

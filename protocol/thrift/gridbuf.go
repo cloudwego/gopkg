@@ -20,19 +20,19 @@ import (
 	"encoding/binary"
 	"fmt"
 
-	"github.com/cloudwego/gopkg/xbuf"
+	"github.com/cloudwego/gopkg/gridbuf"
 )
 
-var XBuffer XBufferProtocol
+var GridBuffer GridBufferProtocol
 
-type XBufferProtocol struct{}
+type GridBufferProtocol struct{}
 
 // Skip skips over the value for the given type using Go implementation.
-func (p XBufferProtocol) Skip(b *xbuf.XReadBuffer, t TType, unknownFields []byte, receiveUnknownFields bool) ([]byte, error) {
+func (p GridBufferProtocol) Skip(b *gridbuf.ReadBuffer, t TType, unknownFields []byte, receiveUnknownFields bool) ([]byte, error) {
 	return p.skipType(b, t, defaultRecursionDepth, unknownFields, receiveUnknownFields)
 }
 
-func (p XBufferProtocol) skipType(b *xbuf.XReadBuffer, t TType, maxdepth int, unknownFields []byte, receiveUnknownFields bool, ) ([]byte, error) {
+func (p GridBufferProtocol) skipType(b *gridbuf.ReadBuffer, t TType, maxdepth int, unknownFields []byte, receiveUnknownFields bool, ) ([]byte, error) {
 	if maxdepth == 0 {
 		return unknownFields, errDepthLimitExceeded
 	}
