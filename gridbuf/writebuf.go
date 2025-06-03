@@ -32,8 +32,6 @@ var writeBufferPool = sync.Pool{
 }
 
 type WriteBuffer struct {
-	off    int // write offset of chunk
-	chunk  []byte
 	chunks [][]byte
 	pool   [][]byte
 }
@@ -42,18 +40,31 @@ func NewWriteBuffer() *WriteBuffer {
 	return writeBufferPool.Get().(*WriteBuffer)
 }
 
-func (b *WriteBuffer) Bytes() [][]byte {
-	if b.off > 0 {
-		b.chunks = append(b.chunks, b.chunk[:b.off])
-		b.chunk = b.chunk[b.off:]
-		b.off = 0
+func (b *WriteBuffer) NewBuffer(old []byte, n int) []byte {
+	if b == nil {
+		return old
 	}
-	return b.chunks
+	if len(old) > 0 {
+		b.chunks = append(b.chunks, old)
+	}
+	if n < 0 {
+		// n < 0 means no need to malloc
+		return nil
+	}
+	// refresh chunk
+	if n < padLength {
+		n = padLength
+	}
+	buf := mcache.Malloc(n)
+	buf = buf[:0]
+	b.pool = append(b.pool, buf)
+	return buf
 }
 
 func (b *WriteBuffer) Free() {
-	b.off = 0
-	b.chunk = nil
+	if b == nil {
+		return
+	}
 	for i := range b.chunks {
 		b.chunks[i] = nil
 	}
@@ -66,45 +77,27 @@ func (b *WriteBuffer) Free() {
 	writeBufferPool.Put(b)
 }
 
-// MallocN malloc n bytes from chunk, if chunk is not enough, it will grow.
-//
-// MAKE SURE IT CAN BE INLINE:
-// `can inline (*XWriteBuffer).MallocN with cost 79`
-func (b *WriteBuffer) MallocN(n int) (buf []byte) {
-	buf = b.chunk[b.off:]
-	if len(buf) < n {
-		buf = b.growSlow(n)
+func (b *WriteBuffer) WriteDirect(old, buf []byte) []byte {
+	if b == nil {
+		return append(old, buf...)
 	}
-	b.off += n
-	return
-}
-
-func (b *WriteBuffer) growSlow(n int) []byte {
-	if b.off > 0 {
-		b.chunk = b.chunk[:b.off]
-		b.chunks = append(b.chunks, b.chunk)
-		b.off = 0
-	}
-	// refresh chunk
-	if n < padLength {
-		n = padLength
-	}
-	buf := mcache.Malloc(n)
-	buf = buf[:cap(buf)]
-	b.pool = append(b.pool, buf)
-	b.chunk = buf
-	return buf
-}
-
-func (b *WriteBuffer) WriteDirect(buf []byte) {
 	// relink chunks
-	if b.off > 0 {
-		b.chunks = append(b.chunks, b.chunk[:b.off])
-		b.chunk = b.chunk[b.off:]
-		b.off = 0
+	if len(old) > 0 {
+		b.chunks = append(b.chunks, old)
 	}
 
 	// write directly
 	b.chunks = append(b.chunks, buf)
-	return
+
+	if cap(buf)-len(buf) > 0 {
+		return old[len(old):cap(old)]
+	}
+	return b.NewBuffer(nil, 0)
+}
+
+func (b *WriteBuffer) Bytes() [][]byte {
+	if b == nil {
+		return nil
+	}
+	return b.chunks
 }
