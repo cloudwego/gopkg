@@ -185,6 +185,27 @@ func (r *DefaultReader) ReadBinary(bs []byte) (m int, err error) {
 	return
 }
 
+// Read implements io.Reader
+func (r *DefaultReader) Read(bs []byte) (n int, err error) {
+	if len(bs) == 0 {
+		return 0, nil
+	}
+	if available := len(r.buf) - r.ri; available != 0 {
+		// return the available data instead of waiting for more
+		n = copy(bs, r.buf[r.ri:])
+		r.ri += n
+		return n, nil
+	}
+	// try to read
+	m := r.acquire(1)
+	if m < 1 {
+		return 0, r.err
+	}
+	n = copy(bs, r.buf[r.ri:])
+	r.ri += n
+	return n, nil
+}
+
 func (r *DefaultReader) Release(e error) error {
 	if r.pendingBuf != nil {
 		for _, buf := range r.pendingBuf {

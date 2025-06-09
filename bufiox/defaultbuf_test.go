@@ -72,6 +72,46 @@ func TestDefaultReader(t *testing.T) {
 			},
 		},
 		{
+			dataSize: defaultBufSize * 2,
+			handle: func(reader Reader) {
+				dr, ok := reader.(*DefaultReader)
+				if !ok {
+					return
+				}
+				_, err := reader.Peek(1)
+				if err != nil {
+					t.Fatal("Peek failed")
+				}
+				readable := len(dr.buf) - dr.ri
+				buf := make([]byte, readable+1)
+				n, err := dr.Read(buf)
+				if err != nil {
+					t.Fatal("err is not nil", err)
+				}
+				if n != readable {
+					t.Fatalf("read returns incorrect length, expected=%d, actual=%d", readable, n)
+				}
+				// read all readable
+				_, err = dr.Next(len(dr.buf) - dr.ri)
+				if err != nil {
+					t.Fatal(err)
+				}
+				buf = make([]byte, 10)
+				n, err = dr.Read(buf)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if n != len(buf) {
+					t.Fatalf("read returns incorrect length, expected=%d, actual=%d", len(buf), n)
+				}
+				for _, b := range buf {
+					if b != 0xff {
+						t.Fatal("data not equal")
+					}
+				}
+			},
+		},
+		{
 			dataSize: 1024 * 16,
 			handle: func(reader Reader) {
 				buf, err := reader.Next(1024)
