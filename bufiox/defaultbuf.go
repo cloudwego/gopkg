@@ -46,8 +46,7 @@ var errNegativeCount = errors.New("bufiox: negative count")
 
 // NewDefaultReader returns a new DefaultReader that reads from r.
 func NewDefaultReader(rd io.Reader) *DefaultReader {
-	r := &DefaultReader{}
-	r.reset(rd, nil)
+	r := &DefaultReader{rd: rd}
 	return r
 }
 
@@ -233,8 +232,7 @@ type DefaultWriter struct {
 
 // NewDefaultWriter returns a new DefaultWriter that writes to w.
 func NewDefaultWriter(wd io.Writer) *DefaultWriter {
-	w := &DefaultWriter{}
-	w.reset(wd, nil, false)
+	w := &DefaultWriter{wd: wd}
 	return w
 }
 
