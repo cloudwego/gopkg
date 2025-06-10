@@ -186,6 +186,8 @@ func (r *DefaultReader) ReadBinary(bs []byte) (m int, err error) {
 }
 
 // Read implements io.Reader
+// If some data is available but fewer than len(bs) bytes, Read returns what is available instead of waiting for more,
+// which differs from ReadBinary.
 func (r *DefaultReader) Read(bs []byte) (n int, err error) {
 	if len(bs) == 0 {
 		return 0, nil
