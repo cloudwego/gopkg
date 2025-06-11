@@ -20,8 +20,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cloudwego/gopkg/internal/testutils/netpoll"
 	"github.com/stretchr/testify/require"
+
+	"github.com/cloudwego/gopkg/internal/testutils/netpoll"
 )
 
 func TestBinary(t *testing.T) {
@@ -189,21 +190,21 @@ func TestBinary(t *testing.T) {
 	}
 
 	{ // Message
-		testname, testtyp, testseq := "name", CALL, int32(7)
+		testname, testtype, testseq := "name", CALL, int32(7)
 		sz := Binary.MessageBeginLength(testname)
 
-		b := Binary.AppendMessageBegin([]byte(nil), testname, testtyp, testseq)
+		b := Binary.AppendMessageBegin([]byte(nil), testname, testtype, testseq)
 		require.Equal(t, sz, len(b))
 
 		b1 := make([]byte, sz)
-		l := Binary.WriteMessageBegin(b1, testname, testtyp, testseq)
+		l := Binary.WriteMessageBegin(b1, testname, testtype, testseq)
 		require.Equal(t, sz, l)
 		require.Equal(t, b, b1)
 
-		name, typ, seq, l, _ := Binary.ReadMessageBegin(b)
+		name, typeid, seq, l, _ := Binary.ReadMessageBegin(b)
 		require.Equal(t, sz, l)
 		require.Equal(t, testname, name)
-		require.Equal(t, testtyp, typ)
+		require.Equal(t, testtype, typeid)
 		require.Equal(t, testseq, seq)
 
 		_, _, _, _, err := Binary.ReadMessageBegin([]byte(nil))
@@ -211,28 +212,28 @@ func TestBinary(t *testing.T) {
 	}
 
 	{ // Field
-		testtyp, testfid := I64, int16(7)
+		testtype, testfid := I64, int16(7)
 		sz := Binary.FieldBeginLength() + Binary.FieldStopLength()
 
-		b := Binary.AppendFieldBegin([]byte(nil), testtyp, testfid)
+		b := Binary.AppendFieldBegin([]byte(nil), testtype, testfid)
 		b = Binary.AppendFieldStop(b)
 		require.Equal(t, sz, len(b))
 
 		b1 := make([]byte, sz)
-		l := Binary.WriteFieldBegin(b1, testtyp, testfid)
+		l := Binary.WriteFieldBegin(b1, testtype, testfid)
 		l += Binary.WriteFieldStop(b1[l:])
 		require.Equal(t, sz, l)
 		require.Equal(t, b, b1)
 
-		typ, fid, l, _ := Binary.ReadFieldBegin(b)
+		typeid, fid, l, _ := Binary.ReadFieldBegin(b)
 		require.Equal(t, sz, l+1) // +STOP
-		require.Equal(t, testtyp, typ)
+		require.Equal(t, testtype, typeid)
 		require.Equal(t, testfid, fid)
 
-		typ, _, l, err := Binary.ReadFieldBegin(b[l:])
+		typeid, _, l, err := Binary.ReadFieldBegin(b[l:])
 		require.NoError(t, err)
 		require.Equal(t, 1, l)
-		require.Equal(t, STOP, typ)
+		require.Equal(t, STOP, typeid)
 
 		_, _, _, err = Binary.ReadFieldBegin([]byte(nil))
 		require.Same(t, errReadField, err)
