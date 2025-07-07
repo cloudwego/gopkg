@@ -1,4 +1,4 @@
-module github.com/cloudwego/gopkg
+module github.com/yanfeizhang/gopkg
 
 go 1.18
 
