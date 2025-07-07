@@ -20,6 +20,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
+	"reflect"
 	"unsafe"
 
 	"github.com/bytedance/gopkg/lang/span"
@@ -377,9 +378,23 @@ func (p BinaryProtocol) ReadString(buf []byte) (s string, l int, err error) {
 		data := spanCache.Copy(buf[4:l])
 		s = unsafex.BinaryToString(data)
 	} else {
-		s = string(buf[4:l])
+		//s = string(buf[4:l])
+		s = BytesToString(buf, 4)
 	}
 	return s, l, nil
+}
+
+func BytesToString(b []byte, offset int) string {
+	sliceHeader := (*reflect.SliceHeader)(unsafe.Pointer(&b))
+
+	// 构造字符串的底层结构，复用切片的Data和Len
+	strHeader := reflect.StringHeader{
+		Data: sliceHeader.Data + uintptr(offset),
+		Len:  sliceHeader.Len - offset,
+	}
+
+	// 将字符串结构指针转换为string
+	return *(*string)(unsafe.Pointer(&strHeader))
 }
 
 func (BinaryProtocol) ReadBool(buf []byte) (v bool, l int, err error) {
