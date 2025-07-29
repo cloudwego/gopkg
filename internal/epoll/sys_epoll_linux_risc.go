@@ -12,6 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//go:build linux && (arm64 || loong64)
+// +build linux
+// +build arm64 loong64
+
 package netpoll
 
 import (
