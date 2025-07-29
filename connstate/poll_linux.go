@@ -35,7 +35,7 @@ func (p *epoller) control(fd *fdOperator, op op) error {
 	if op == opAdd {
 		var ev epollevent
 		ev.data = *(*[8]byte)(unsafe.Pointer(&fd))
-		ev.events = syscall.EPOLLHUP | syscall.EPOLLRDHUP | syscall.EPOLLERR | syscall.EPOLLET
+		ev.events = syscall.EPOLLHUP | syscall.EPOLLRDHUP | syscall.EPOLLERR | EPOLLET
 		return EpollCtl(p.epfd, syscall.EPOLL_CTL_ADD, fd.fd, &ev)
 	} else {
 		var ev epollevent

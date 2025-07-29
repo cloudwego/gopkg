@@ -2,7 +2,6 @@ package connstate
 
 import (
 	"errors"
-	"fmt"
 	"net"
 	"sync/atomic"
 	"syscall"
@@ -23,13 +22,7 @@ type ConnWithState interface {
 }
 
 func ListenConnState(conn net.Conn) (ConnWithState, error) {
-	pollInitOnce.Do(func() {
-		var err error
-		poll, err = openpoll()
-		if err != nil {
-			panic(fmt.Sprintf("gopkg.connstate openpoll failed, err: %v", err))
-		}
-	})
+	pollInitOnce.Do(createPoller)
 	sysConn, ok := conn.(syscall.Conn)
 	if !ok {
 		return nil, errors.New("conn is not syscall.Conn")
