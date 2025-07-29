@@ -12,35 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package connstate
+package netpoll
 
-import (
-	"fmt"
-	"sync"
-)
+import _ "unsafe"
 
-type op int
+//go:linkname entersyscallblock runtime.entersyscallblock
+func entersyscallblock()
 
-const (
-	opAdd op = iota
-	opDel
-)
-
-var (
-	pollInitOnce sync.Once
-	poll         poller
-)
-
-type poller interface {
-	wait() error
-	control(fd *fdOperator, op op) error
-}
-
-func createPoller() {
-	var err error
-	poll, err = openpoll()
-	if err != nil {
-		panic(fmt.Sprintf("gopkg.connstate openpoll failed, err: %v", err))
-	}
-	go poll.wait()
-}
+//go:linkname exitsyscall runtime.exitsyscall
+func exitsyscall()

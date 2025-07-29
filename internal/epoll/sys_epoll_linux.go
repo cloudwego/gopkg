@@ -12,35 +12,32 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package connstate
+//go:build !arm64 && !loong64
+// +build !arm64,!loong64
+
+package netpoll
 
 import (
-	"fmt"
-	"sync"
+	"syscall"
+	"unsafe"
 )
 
-type op int
+var _zero uintptr
 
-const (
-	opAdd op = iota
-	opDel
-)
-
-var (
-	pollInitOnce sync.Once
-	poll         poller
-)
-
-type poller interface {
-	wait() error
-	control(fd *fdOperator, op op) error
-}
-
-func createPoller() {
-	var err error
-	poll, err = openpoll()
-	if err != nil {
-		panic(fmt.Sprintf("gopkg.connstate openpoll failed, err: %v", err))
+// EpollWait implements epoll_wait.
+func EpollWait(epfd int, events []syscall.EpollEvent, msec int) (n int, err error) {
+	var _p0 unsafe.Pointer
+	if len(events) > 0 {
+		_p0 = unsafe.Pointer(&events[0])
+	} else {
+		_p0 = unsafe.Pointer(&_zero)
 	}
-	go poll.wait()
+	entersyscallblock()
+	r0, _, e1 := syscall.RawSyscall6(syscall.SYS_EPOLL_WAIT, uintptr(epfd), uintptr(_p0), uintptr(len(events)), uintptr(msec), 0, 0)
+	exitsyscall()
+	n = int(r0)
+	if e1 != 0 {
+		err = e1
+	}
+	return
 }
