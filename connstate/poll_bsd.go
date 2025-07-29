@@ -28,7 +28,7 @@ func (p *kqueue) wait() error {
 		for i := 0; i < n; i++ {
 			ev := &events[i]
 			op := *(**fdOperator)(unsafe.Pointer(&ev.Udata))
-			if conn := (*connWithState)(atomic.LoadPointer(&op.conn)); conn != nil {
+			if conn := (*connStater)(atomic.LoadPointer(&op.conn)); conn != nil {
 				if ev.Flags&(syscall.EV_EOF) != 0 {
 					atomic.CompareAndSwapUint32(&conn.state, uint32(StateOK), uint32(StateRemoteClosed))
 				}

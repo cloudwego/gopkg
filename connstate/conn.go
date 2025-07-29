@@ -16,12 +16,12 @@ const (
 	StateClosed
 )
 
-type ConnWithState interface {
-	net.Conn
+type ConnStater interface {
+	Close() error
 	State() ConnState
 }
 
-func ListenConnState(conn net.Conn) (ConnWithState, error) {
+func ListenConnState(conn net.Conn) (ConnStater, error) {
 	pollInitOnce.Do(createPoller)
 	sysConn, ok := conn.(syscall.Conn)
 	if !ok {
@@ -36,7 +36,7 @@ func ListenConnState(conn net.Conn) (ConnWithState, error) {
 	err = rawConn.Control(func(fileDescriptor uintptr) {
 		fd = pollcache.alloc()
 		fd.fd = int(fileDescriptor)
-		fd.conn = unsafe.Pointer(&connWithState{Conn: conn, fd: unsafe.Pointer(fd)})
+		fd.conn = unsafe.Pointer(&connStater{fd: unsafe.Pointer(fd)})
 		opAddErr = poll.control(fd, opAdd)
 	})
 	if fd != nil {
@@ -53,25 +53,24 @@ func ListenConnState(conn net.Conn) (ConnWithState, error) {
 	if opAddErr != nil {
 		return nil, opAddErr
 	}
-	return (*connWithState)(fd.conn), nil
+	return (*connStater)(fd.conn), nil
 }
 
-type connWithState struct {
-	net.Conn
+type connStater struct {
 	fd    unsafe.Pointer // *fdOperator
 	state uint32
 }
 
-func (c *connWithState) Close() error {
+func (c *connStater) Close() error {
 	fd := (*fdOperator)(atomic.LoadPointer(&c.fd))
 	if fd != nil && atomic.CompareAndSwapPointer(&c.fd, unsafe.Pointer(fd), nil) {
 		atomic.StoreUint32(&c.state, uint32(StateClosed))
 		_ = poll.control(fd, opDel)
 		pollcache.freeable(fd)
 	}
-	return c.Conn.Close()
+	return nil
 }
 
-func (c *connWithState) State() ConnState {
+func (c *connStater) State() ConnState {
 	return ConnState(atomic.LoadUint32(&c.state))
 }
