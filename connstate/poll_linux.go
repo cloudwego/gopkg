@@ -13,8 +13,9 @@ type epoller struct {
 }
 
 func (p *epoller) wait() error {
+	events := make([]syscall.EpollEvent, 128)
 	for {
-		events := make([]syscall.EpollEvent, 32)
+		// TODO: handoff p by entersyscallblock, or make poller run as a thread.
 		n, err := syscall.EpollWait(p.epfd, events, -1)
 		if err != nil && err != syscall.EINTR {
 			return err
@@ -36,7 +37,7 @@ func (p *epoller) wait() error {
 func (p *epoller) control(fd *fdOperator, op op) error {
 	if op == opAdd {
 		var ev syscall.EpollEvent
-		*(*unsafe.Pointer)(unsafe.Pointer(&ev.Fd)) = unsafe.Pointer(fd)
+		*(**fdOperator)(unsafe.Pointer(&ev.Fd)) = fd
 		ev.Events = syscall.EPOLLHUP | syscall.EPOLLRDHUP | syscall.EPOLLERR | _EPOLLET
 		return syscall.EpollCtl(p.epfd, syscall.EPOLL_CTL_ADD, fd.fd, &ev)
 	} else {
