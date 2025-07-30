@@ -19,7 +19,7 @@ import (
 	"syscall"
 	"unsafe"
 
-	iepoll "github.com/cloudwego/gopkg/internal/epoll"
+	isyscall "github.com/cloudwego/gopkg/internal/syscall"
 )
 
 const _EPOLLET uint32 = 0x80000000
@@ -31,7 +31,7 @@ type epoller struct {
 func (p *epoller) wait() error {
 	events := make([]syscall.EpollEvent, 128)
 	for {
-		n, err := iepoll.EpollWait(p.epfd, events, -1)
+		n, err := isyscall.EpollWait(p.epfd, events, -1)
 		if err != nil && err != syscall.EINTR {
 			return err
 		}
