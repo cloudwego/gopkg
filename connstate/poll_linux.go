@@ -29,7 +29,7 @@ type epoller struct {
 }
 
 func (p *epoller) wait() error {
-	events := make([]syscall.EpollEvent, 128)
+	events := make([]syscall.EpollEvent, 1024)
 	for {
 		n, err := isyscall.EpollWait(p.epfd, events, -1)
 		if err != nil && err != syscall.EINTR {

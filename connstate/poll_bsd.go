@@ -30,7 +30,6 @@ type kqueue struct {
 func (p *kqueue) wait() error {
 	events := make([]syscall.Kevent_t, 1024)
 	for {
-		// TODO: handoff p by entersyscallblock, or make poller run as a thread.
 		n, err := syscall.Kevent(p.fd, nil, events, nil)
 		if err != nil && err != syscall.EINTR {
 			// exit gracefully
