@@ -25,16 +25,24 @@ import (
 type ConnState uint32
 
 const (
+	// StateOK means the connection is normal.
 	StateOK ConnState = iota
+	// StateRemoteClosed means the remote side has closed the connection.
 	StateRemoteClosed
+	// StateClosed means the connection has been closed by local side.
 	StateClosed
 )
 
+// ConnStater is the interface to get the ConnState of a connection.
+// Must call Close to release it if you're going to close the connection.
 type ConnStater interface {
 	Close() error
 	State() ConnState
 }
 
+// ListenConnState returns a ConnStater for the given connection.
+// It's generally used for availability checks when obtaining connections from a connection pool.
+// Conn must be a syscall.Conn.
 func ListenConnState(conn net.Conn) (ConnStater, error) {
 	pollInitOnce.Do(createPoller)
 	sysConn, ok := conn.(syscall.Conn)

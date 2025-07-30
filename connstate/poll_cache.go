@@ -27,7 +27,7 @@ type fdOperator struct {
 	index int32
 
 	fd   int
-	conn unsafe.Pointer // *connWithState
+	conn unsafe.Pointer // *connStater
 }
 
 var pollcache pollCache
