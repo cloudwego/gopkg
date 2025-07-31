@@ -32,6 +32,8 @@ type epoller struct {
 func (p *epoller) wait() error {
 	events := make([]syscall.EpollEvent, 1024)
 	for {
+		// epoll wait is a blocking syscall, so we need to call entersyscallblock to handoff P,
+		// and let the P run other goroutines.
 		n, err := isyscall.EpollWait(p.epfd, events, -1)
 		if err != nil && err != syscall.EINTR {
 			return err

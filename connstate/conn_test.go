@@ -16,6 +16,7 @@ package connstate
 
 import (
 	"errors"
+	"io"
 	"net"
 	"sync"
 	"syscall"
@@ -53,7 +54,10 @@ func TestListenConnState(t *testing.T) {
 	assert.Equal(t, StateOK, stater.State())
 	_, err = conn.Write([]byte("hello world"))
 	assert.Nil(t, err)
-	time.Sleep(100 * time.Millisecond)
+	buf := make([]byte, 1)
+	_, err = conn.Read(buf)
+	assert.Equal(t, io.EOF, err)
+	time.Sleep(10 * time.Millisecond)
 	assert.Equal(t, StateRemoteClosed, stater.State())
 	assert.Nil(t, stater.Close())
 	assert.Nil(t, conn.Close())
@@ -95,9 +99,17 @@ func (r *mockRawConn) Control(f func(fd uintptr)) error {
 func TestListenConnState_Err(t *testing.T) {
 	testMutex.Lock()
 	defer testMutex.Unlock()
-	var expectDetach bool
-	pollInitOnce.Do(func() {})
+	// replace poll
+	pollInitOnce.Do(createPoller)
 	oldPoll := poll
+	defer func() {
+		poll = oldPoll
+	}()
+	// test detach
+	var expectDetach bool
+	defer func() {
+		assert.True(t, expectDetach)
+	}()
 	cases := []struct {
 		name            string
 		connControlFunc func(f func(fd uintptr)) error
@@ -151,12 +163,6 @@ func TestListenConnState_Err(t *testing.T) {
 			assert.Equal(t, c.expectErr, err)
 		})
 	}
-	assert.True(t, expectDetach)
-	if oldPoll != nil {
-		poll = oldPoll
-	} else {
-		createPoller()
-	}
 }
 
 func BenchmarkListenConnState(b *testing.B) {
@@ -187,7 +193,10 @@ func BenchmarkListenConnState(b *testing.B) {
 			assert.Equal(b, StateOK, stater.State())
 			_, err = conn.Write([]byte("hello world"))
 			assert.Nil(b, err)
-			time.Sleep(20 * time.Millisecond)
+			buf := make([]byte, 1)
+			_, err = conn.Read(buf)
+			assert.Equal(b, io.EOF, err)
+			time.Sleep(10 * time.Millisecond)
 			assert.Equal(b, StateRemoteClosed, stater.State())
 			assert.Nil(b, stater.Close())
 			assert.Nil(b, conn.Close())
