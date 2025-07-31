@@ -58,7 +58,7 @@ func ListenConnState(conn net.Conn) (ConnStater, error) {
 	err = rawConn.Control(func(fileDescriptor uintptr) {
 		fd = pollcache.alloc()
 		fd.fd = int(fileDescriptor)
-		fd.conn = unsafe.Pointer(&connStater{fd: unsafe.Pointer(fd)})
+		atomic.StorePointer(&fd.conn, unsafe.Pointer(&connStater{fd: unsafe.Pointer(fd)}))
 		opAddErr = poll.control(fd, opAdd)
 	})
 	if fd != nil {
@@ -75,7 +75,7 @@ func ListenConnState(conn net.Conn) (ConnStater, error) {
 	if opAddErr != nil {
 		return nil, opAddErr
 	}
-	return (*connStater)(fd.conn), nil
+	return (*connStater)(atomic.LoadPointer(&fd.conn)), nil
 }
 
 type connStater struct {

@@ -28,6 +28,7 @@ type epoller struct {
 	epfd int
 }
 
+//go:nocheckptr
 func (p *epoller) wait() error {
 	events := make([]syscall.EpollEvent, 1024)
 	for {
