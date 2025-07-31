@@ -209,6 +209,17 @@ func (s *statefulConn) Close() error {
 	return s.Conn.Close()
 }
 
+type mockStater struct {
+}
+
+func (m *mockStater) State() ConnState {
+	return StateOK
+}
+
+func (m *mockStater) Close() error {
+	return nil
+}
+
 type connpool struct {
 	mu    sync.Mutex
 	conns []*statefulConn
@@ -241,11 +252,32 @@ func (p *connpool) put(conn *statefulConn) {
 	p.conns = append(p.conns, conn)
 }
 
-// BenchmarkHandoffP is used to verify the impact on performance caused by P being occupied by the poller
-// when using syscall.EpollWait() in a high-load scenario.
-// To compare with syscall.EpollWait(), you could run `go test -bench=BenchmarkHandoffP -benchtime=10s .`
+func (p *connpool) Close() error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for _, conn := range p.conns {
+		conn.Close()
+	}
+	p.conns = p.conns[:0]
+	return nil
+}
+
+var withListenConnState bool
+
+// BenchmarkWithConnState is used to verify the impact of adding ConnState logic on performance.
+// To compare with syscall.EpollWait(), you could run `go test -bench=BenchmarkWith -benchtime=10s .`
 // to test the first time, and replace isyscall.EpollWait() with syscall.EpollWait() to test the second time.
-func BenchmarkHandoffP(b *testing.B) {
+func BenchmarkWithConnState(b *testing.B) {
+	withListenConnState = true
+	benchmarkConnState(b)
+}
+
+func BenchmarkWithoutConnState(b *testing.B) {
+	withListenConnState = false
+	benchmarkConnState(b)
+}
+
+func benchmarkConnState(b *testing.B) {
 	// set GOMAXPROCS to 1 to make P resources scarce
 	runtime.GOMAXPROCS(1)
 	ln, err := net.Listen("tcp", "localhost:0")
@@ -283,8 +315,13 @@ func BenchmarkHandoffP(b *testing.B) {
 	dialFunc := func() *statefulConn {
 		conn, err := net.Dial("tcp", ln.Addr().String())
 		assert.Nil(b, err)
-		stater, err := ListenConnState(conn)
-		assert.Nil(b, err)
+		var stater ConnStater
+		if withListenConnState {
+			stater, err = ListenConnState(conn)
+			assert.Nil(b, err)
+		} else {
+			stater = &mockStater{}
+		}
 		return &statefulConn{
 			Conn:   conn,
 			stater: stater,
@@ -308,4 +345,5 @@ func BenchmarkHandoffP(b *testing.B) {
 			cp.put(conn)
 		}
 	})
+	_ = cp.Close()
 }
