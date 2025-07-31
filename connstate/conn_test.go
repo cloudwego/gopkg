@@ -18,6 +18,7 @@ import (
 	"errors"
 	"io"
 	"net"
+	"runtime"
 	"sync"
 	"syscall"
 	"testing"
@@ -26,11 +27,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-var testMutex sync.Mutex
-
 func TestListenConnState(t *testing.T) {
-	testMutex.Lock()
-	defer testMutex.Unlock()
 	ln, err := net.Listen("tcp", "localhost:0")
 	if err != nil {
 		panic(err)
@@ -39,12 +36,12 @@ func TestListenConnState(t *testing.T) {
 		for {
 			conn, err := ln.Accept()
 			assert.Nil(t, err)
-			go func() {
+			go func(conn net.Conn) {
 				buf := make([]byte, 11)
 				_, err := conn.Read(buf)
 				assert.Nil(t, err)
 				conn.Close()
-			}()
+			}(conn)
 		}
 	}()
 	conn, err := net.Dial("tcp", ln.Addr().String())
@@ -97,8 +94,6 @@ func (r *mockRawConn) Control(f func(fd uintptr)) error {
 }
 
 func TestListenConnState_Err(t *testing.T) {
-	testMutex.Lock()
-	defer testMutex.Unlock()
 	// replace poll
 	pollInitOnce.Do(createPoller)
 	oldPoll := poll
@@ -166,8 +161,6 @@ func TestListenConnState_Err(t *testing.T) {
 }
 
 func BenchmarkListenConnState(b *testing.B) {
-	testMutex.Lock()
-	defer testMutex.Unlock()
 	ln, err := net.Listen("tcp", "localhost:0")
 	if err != nil {
 		panic(err)
@@ -176,14 +169,15 @@ func BenchmarkListenConnState(b *testing.B) {
 		for {
 			conn, err := ln.Accept()
 			assert.Nil(b, err)
-			go func() {
+			go func(conn net.Conn) {
 				buf := make([]byte, 11)
 				_, err := conn.Read(buf)
 				assert.Nil(b, err)
 				conn.Close()
-			}()
+			}(conn)
 		}
 	}()
+	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
 			conn, err := net.Dial("tcp", ln.Addr().String())
@@ -201,6 +195,117 @@ func BenchmarkListenConnState(b *testing.B) {
 			assert.Nil(b, stater.Close())
 			assert.Nil(b, conn.Close())
 			assert.Equal(b, StateClosed, stater.State())
+		}
+	})
+}
+
+type statefulConn struct {
+	net.Conn
+	stater ConnStater
+}
+
+func (s *statefulConn) Close() error {
+	s.stater.Close()
+	return s.Conn.Close()
+}
+
+type connpool struct {
+	mu    sync.Mutex
+	conns []*statefulConn
+}
+
+func (p *connpool) get(dialFunc func() *statefulConn) *statefulConn {
+	p.mu.Lock()
+	if len(p.conns) == 0 {
+		p.mu.Unlock()
+		return dialFunc()
+	}
+	for i := len(p.conns) - 1; i >= 0; i-- {
+		conn := p.conns[i]
+		if conn.stater.State() == StateOK {
+			p.conns = p.conns[:i]
+			p.mu.Unlock()
+			return conn
+		} else {
+			conn.Close()
+		}
+	}
+	p.conns = p.conns[:0]
+	p.mu.Unlock()
+	return dialFunc()
+}
+
+func (p *connpool) put(conn *statefulConn) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.conns = append(p.conns, conn)
+}
+
+// BenchmarkHandoffP is used to verify the impact on performance caused by P being occupied by the poller
+// when using syscall.EpollWait() in a high-load scenario.
+// To compare with syscall.EpollWait(), you could run `go test -bench=BenchmarkHandoffP -benchtime=10s .`
+// to test the first time, and replace isyscall.EpollWait() with syscall.EpollWait() to test the second time.
+func BenchmarkHandoffP(b *testing.B) {
+	// set GOMAXPROCS to 1 to make P resources scarce
+	runtime.GOMAXPROCS(1)
+	ln, err := net.Listen("tcp", "localhost:0")
+	if err != nil {
+		panic(err)
+	}
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			assert.Nil(b, err)
+			go func(conn net.Conn) {
+				var count uint64
+				for {
+					buf := make([]byte, 11)
+					_, err := conn.Read(buf)
+					if err != nil {
+						conn.Close()
+						return
+					}
+					_, err = conn.Write(buf)
+					if err != nil {
+						conn.Close()
+						return
+					}
+					count++
+					if count == 1000 {
+						conn.Close()
+						return
+					}
+				}
+			}(conn)
+		}
+	}()
+	cp := &connpool{}
+	dialFunc := func() *statefulConn {
+		conn, err := net.Dial("tcp", ln.Addr().String())
+		assert.Nil(b, err)
+		stater, err := ListenConnState(conn)
+		assert.Nil(b, err)
+		return &statefulConn{
+			Conn:   conn,
+			stater: stater,
+		}
+	}
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			conn := cp.get(dialFunc)
+			buf := make([]byte, 11)
+			_, err := conn.Write(buf)
+			if err != nil {
+				conn.Close()
+				continue
+			}
+			_, err = conn.Read(buf)
+			if err != nil {
+				conn.Close()
+				continue
+			}
+			cp.put(conn)
 		}
 	})
 }
