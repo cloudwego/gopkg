@@ -16,7 +16,6 @@ package connstate
 
 import (
 	"sync"
-	"sync/atomic"
 	"unsafe"
 )
 
@@ -39,7 +38,6 @@ type pollCache struct {
 	// freelist store the freeable operator
 	// to reduce GC pressure, we only store op index here
 	freelist []int32
-	freeack  int32
 }
 
 func (c *pollCache) alloc() *fdOperator {
@@ -68,21 +66,18 @@ func (c *pollCache) alloc() *fdOperator {
 // freeable mark the operator that could be freed
 // only poller could do the real free action
 func (c *pollCache) freeable(op *fdOperator) {
-	atomic.StorePointer(&op.conn, nil)
 	c.lock.Lock()
-	// reset all state
-	if atomic.CompareAndSwapInt32(&c.freeack, 1, 0) {
-		for _, idx := range c.freelist {
-			op := c.cache[idx]
-			op.link = c.first
-			c.first = op
-		}
-		c.freelist = c.freelist[:0]
-	}
 	c.freelist = append(c.freelist, op.index)
 	c.lock.Unlock()
 }
 
 func (c *pollCache) free() {
-	atomic.StoreInt32(&c.freeack, 1)
+	c.lock.Lock()
+	for _, idx := range c.freelist {
+		op := c.cache[idx]
+		op.link = c.first
+		c.first = op
+	}
+	c.freelist = c.freelist[:0]
+	c.lock.Unlock()
 }

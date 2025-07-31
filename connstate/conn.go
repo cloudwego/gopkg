@@ -66,6 +66,7 @@ func ListenConnState(conn net.Conn) (ConnStater, error) {
 			_ = poll.control(fd, opDel)
 		}
 		if err != nil || opAddErr != nil {
+			atomic.StorePointer(&fd.conn, nil)
 			pollcache.freeable(fd)
 		}
 	}
@@ -88,6 +89,7 @@ func (c *connStater) Close() error {
 	if fd != nil && atomic.CompareAndSwapPointer(&c.fd, unsafe.Pointer(fd), nil) {
 		atomic.StoreUint32(&c.state, uint32(StateClosed))
 		_ = poll.control(fd, opDel)
+		atomic.StorePointer(&fd.conn, nil)
 		pollcache.freeable(fd)
 	}
 	return nil
