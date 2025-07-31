@@ -17,6 +17,7 @@ package connstate
 import (
 	"errors"
 	"net"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -24,7 +25,11 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+var testMutex sync.Mutex
+
 func TestListenConnState(t *testing.T) {
+	testMutex.Lock()
+	defer testMutex.Unlock()
 	ln, err := net.Listen("tcp", "localhost:0")
 	if err != nil {
 		panic(err)
@@ -88,8 +93,11 @@ func (r *mockRawConn) Control(f func(fd uintptr)) error {
 }
 
 func TestListenConnState_Err(t *testing.T) {
+	testMutex.Lock()
+	defer testMutex.Unlock()
 	var expectDetach bool
 	pollInitOnce.Do(func() {})
+	oldPoll := poll
 	cases := []struct {
 		name            string
 		connControlFunc func(f func(fd uintptr)) error
@@ -144,9 +152,16 @@ func TestListenConnState_Err(t *testing.T) {
 		})
 	}
 	assert.True(t, expectDetach)
+	if oldPoll != nil {
+		poll = oldPoll
+	} else {
+		createPoller()
+	}
 }
 
 func BenchmarkListenConnState(b *testing.B) {
+	testMutex.Lock()
+	defer testMutex.Unlock()
 	ln, err := net.Listen("tcp", "localhost:0")
 	if err != nil {
 		panic(err)
