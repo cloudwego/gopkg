@@ -63,7 +63,10 @@ func ListenConnState(conn net.Conn) (ConnStater, error) {
 	})
 	if fd != nil {
 		if err != nil && opAddErr == nil {
-			_ = poll.control(fd, opDel)
+			// if rawConn is closed, poller will delete the fd by itself
+			_ = rawConn.Control(func(_ uintptr) {
+				_ = poll.control(fd, opDel)
+			})
 		}
 		if err != nil || opAddErr != nil {
 			atomic.StorePointer(&fd.conn, nil)
