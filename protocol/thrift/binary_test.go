@@ -20,8 +20,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cloudwego/gopkg/internal/testutils/netpoll"
 	"github.com/stretchr/testify/require"
+
+	"github.com/cloudwego/gopkg/internal/testutils/netpoll"
 )
 
 func TestBinary(t *testing.T) {
@@ -200,10 +201,10 @@ func TestBinary(t *testing.T) {
 		require.Equal(t, sz, l)
 		require.Equal(t, b, b1)
 
-		name, typ, seq, l, _ := Binary.ReadMessageBegin(b)
+		name, typeid, seq, l, _ := Binary.ReadMessageBegin(b)
 		require.Equal(t, sz, l)
 		require.Equal(t, testname, name)
-		require.Equal(t, testtyp, typ)
+		require.Equal(t, testtyp, typeid)
 		require.Equal(t, testseq, seq)
 
 		_, _, _, _, err := Binary.ReadMessageBegin([]byte(nil))
@@ -224,15 +225,15 @@ func TestBinary(t *testing.T) {
 		require.Equal(t, sz, l)
 		require.Equal(t, b, b1)
 
-		typ, fid, l, _ := Binary.ReadFieldBegin(b)
+		typeid, fid, l, _ := Binary.ReadFieldBegin(b)
 		require.Equal(t, sz, l+1) // +STOP
-		require.Equal(t, testtyp, typ)
+		require.Equal(t, testtyp, typeid)
 		require.Equal(t, testfid, fid)
 
-		typ, _, l, err := Binary.ReadFieldBegin(b[l:])
+		typeid, _, l, err := Binary.ReadFieldBegin(b[l:])
 		require.NoError(t, err)
 		require.Equal(t, 1, l)
-		require.Equal(t, STOP, typ)
+		require.Equal(t, STOP, typeid)
 
 		_, _, _, err = Binary.ReadFieldBegin([]byte(nil))
 		require.Same(t, errReadField, err)
