@@ -390,7 +390,7 @@ type fakeIOWriter struct {
 }
 
 func (w *fakeIOWriter) Write(p []byte) (n int, err error) {
-	*w.bw.flushBytes = p
+	*w.bw.flushBytes = append(*w.bw.flushBytes, p...)
 	return len(p), nil
 }
 
