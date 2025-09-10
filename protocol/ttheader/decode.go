@@ -17,7 +17,6 @@ package ttheader
 import (
 	"context"
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"io"
 
@@ -73,7 +72,7 @@ func Decode(ctx context.Context, in bufiox.Reader) (param DecodeParam, err error
 		return
 	}
 	if !IsTTHeader(headerMeta) {
-		err = errors.New("not TTHeader protocol")
+		err = fmt.Errorf("not TTHeader protocol (first4Bytes=%#x, second4Bytes=%#x)", headerMeta[:4], headerMeta[4:8])
 		return
 	}
 	totalLen := Bytes2Uint32NoCheck(headerMeta[:Size32])
