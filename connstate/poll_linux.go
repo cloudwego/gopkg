@@ -18,8 +18,6 @@ import (
 	"sync/atomic"
 	"syscall"
 	"unsafe"
-
-	isyscall "github.com/cloudwego/gopkg/internal/syscall"
 )
 
 const _EPOLLET uint32 = 0x80000000
@@ -34,7 +32,7 @@ func (p *epoller) wait() error {
 	for {
 		// epoll wait is a blocking syscall, so we need to call entersyscallblock to handoff P,
 		// and let the P run other goroutines.
-		n, err := isyscall.EpollWait(p.epfd, events, -1)
+		n, err := syscall.EpollWait(p.epfd, events, -1)
 		if err != nil && err != syscall.EINTR {
 			return err
 		}
