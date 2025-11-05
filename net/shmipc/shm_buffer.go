@@ -309,32 +309,32 @@ func countBufferListMemSize(bufferNum, capPerBuffer uint32) uint32 {
 
 // createBufferList creates a new buffer list with initialized buffers
 // Verified against legacy/buffer_manager.go:341-391
-func createBufferList(bufNum, capPerBuf uint32, mem []byte, offset uint32) (*BufferList, error) {
+func createBufferList(bufNum, capPerBuf uint32, mem []byte) (*BufferList, error) {
 	if bufNum == 0 || capPerBuf == 0 {
 		return nil, fmt.Errorf("bufferNum:%d or capPerBuffer:%d cannot be 0", bufNum, capPerBuf)
 	}
 
 	needSize := countBufferListMemSize(bufNum, capPerBuf)
-	if len(mem) < int(offset+needSize) || offset > uint32(len(mem)) || needSize > uint32(len(mem)) {
-		return nil, fmt.Errorf("mem's size is at least:%d but:%d offset:%d needSize:%d",
-			offset+needSize, len(mem), offset, needSize)
+	if len(mem) < int(needSize) {
+		return nil, fmt.Errorf("mem's size is at least:%d but:%d needSize:%d",
+			needSize, len(mem), needSize)
 	}
 
-	regionStart := offset + bufferListHeaderSize
-	regionEnd := offset + needSize
+	regionStart := uint32(bufferListHeaderSize)
+	regionEnd := needSize
 	if regionEnd <= regionStart {
 		return nil, fmt.Errorf("regionStart:%d regionEnd:%d slice bounds out of range", regionStart, regionEnd)
 	}
 
 	bl := &BufferList{
-		size:         (*int32)(unsafe.Pointer(&mem[offset+0])),
-		cap:          (*uint32)(unsafe.Pointer(&mem[offset+4])),
-		head:         (*uint32)(unsafe.Pointer(&mem[offset+8])),
-		tail:         (*uint32)(unsafe.Pointer(&mem[offset+12])),
-		capPerBuf:    (*uint32)(unsafe.Pointer(&mem[offset+16])),
+		size:         (*int32)(unsafe.Pointer(&mem[0])),
+		cap:          (*uint32)(unsafe.Pointer(&mem[4])),
+		head:         (*uint32)(unsafe.Pointer(&mem[8])),
+		tail:         (*uint32)(unsafe.Pointer(&mem[12])),
+		capPerBuf:    (*uint32)(unsafe.Pointer(&mem[16])),
 		region:       mem[regionStart:regionEnd],
 		regionOffset: regionStart,
-		offset:       offset,
+		offset:       0,
 	}
 
 	// Initialize header fields
@@ -369,46 +369,46 @@ func createBufferList(bufNum, capPerBuf uint32, mem []byte, offset uint32) (*Buf
 
 // mappingBufferList maps an existing buffer list from shared memory
 // Verified against legacy/buffer_manager.go:393-415
-func mappingBufferList(mem []byte, offset uint32) (*BufferList, error) {
-	if len(mem) < bufferListHeaderSize+int(offset) {
-		return nil, fmt.Errorf("mappingBufferList failed, mem's size is at least %d", bufferListHeaderSize+int(offset))
+func mappingBufferList(mem []byte) (*BufferList, error) {
+	if len(mem) < bufferListHeaderSize {
+		return nil, fmt.Errorf("mappingBufferList failed, mem's size is at least %d", bufferListHeaderSize)
 	}
 
 	bl := &BufferList{
-		size:      (*int32)(unsafe.Pointer(&mem[offset+0])),
-		cap:       (*uint32)(unsafe.Pointer(&mem[offset+4])),
-		head:      (*uint32)(unsafe.Pointer(&mem[offset+8])),
-		tail:      (*uint32)(unsafe.Pointer(&mem[offset+12])),
-		capPerBuf: (*uint32)(unsafe.Pointer(&mem[offset+16])),
-		offset:    offset,
+		size:      (*int32)(unsafe.Pointer(&mem[0])),
+		cap:       (*uint32)(unsafe.Pointer(&mem[4])),
+		head:      (*uint32)(unsafe.Pointer(&mem[8])),
+		tail:      (*uint32)(unsafe.Pointer(&mem[12])),
+		capPerBuf: (*uint32)(unsafe.Pointer(&mem[16])),
+		offset:    0,
 	}
 
 	needSize := countBufferListMemSize(*bl.cap, *bl.capPerBuf)
-	if offset+needSize > uint32(len(mem)) || (offset+needSize) < (offset+bufferListHeaderSize) {
+	if needSize > uint32(len(mem)) || needSize < bufferListHeaderSize {
 		return nil, fmt.Errorf("mappingBufferList failed, size:%d cap:%d head:%d tail:%d capPerBuf:%d err: mem's size is at least %d but:%d",
 			*bl.size, *bl.cap, *bl.head, *bl.tail, *bl.capPerBuf, needSize, len(mem))
 	}
 
-	bl.region = mem[offset+bufferListHeaderSize : offset+needSize]
-	bl.regionOffset = offset + bufferListHeaderSize
+	bl.region = mem[bufferListHeaderSize:needSize]
+	bl.regionOffset = bufferListHeaderSize
 
 	return bl, nil
 }
 
-// CreateBufferManager creates a new buffer manager with file-based shared memory
+// CreateBufferManager creates a new buffer manager
 // Verified against legacy/buffer_manager.go:259-297
-func CreateBufferManager(listSizePercent []*SizePercentPair, path string, mem []byte, offset uint32) (*BufferManager, error) {
-	if len(mem) <= int(offset) {
-		return nil, fmt.Errorf("mem's size is at least:%d but:%d", offset+1, len(mem))
+func CreateBufferManager(listSizePercent []*SizePercentPair, path string, mem []byte) (*BufferManager, error) {
+	if len(mem) == 0 {
+		return nil, fmt.Errorf("mem cannot be empty")
 	}
 
 	// Calculate buffer region capacity
-	bufferRegionCap := uint64(len(mem) - int(offset) - bufferListHeaderSize*len(listSizePercent) - bufferManagerHeaderSize)
+	bufferRegionCap := uint64(len(mem) - bufferListHeaderSize*len(listSizePercent) - bufferManagerHeaderSize)
 
 	// Write number of lists (native endian)
-	*(*uint16)(unsafe.Pointer(&mem[offset])) = uint16(len(listSizePercent))
+	*(*uint16)(unsafe.Pointer(&mem[0])) = uint16(len(listSizePercent))
 
-	hadUsedOffset := bufferManagerHeaderSize + offset
+	hadUsedOffset := uint32(bufferManagerHeaderSize)
 	freeBufferLists := make([]*BufferList, 0, len(listSizePercent))
 	sumPercent := uint32(0)
 
@@ -421,7 +421,7 @@ func CreateBufferManager(listSizePercent []*SizePercentPair, path string, mem []
 		bufferNum := uint32(bufferRegionCap*uint64(pair.Percent)/100) / (pair.Size + bufferHeaderSize)
 		needSize := countBufferListMemSize(bufferNum, pair.Size)
 
-		freeList, err := createBufferList(bufferNum, pair.Size, mem, hadUsedOffset)
+		freeList, err := createBufferList(bufferNum, pair.Size, mem[hadUsedOffset:])
 		if err != nil {
 			return nil, err
 		}
@@ -440,22 +440,21 @@ func CreateBufferManager(listSizePercent []*SizePercentPair, path string, mem []
 	}
 
 	// Write used length (native endian)
-	*(*uint32)(unsafe.Pointer(&mem[offset+bmCapOffset])) = hadUsedOffset - bufferManagerHeaderSize
+	*(*uint32)(unsafe.Pointer(&mem[bmCapOffset])) = hadUsedOffset - uint32(bufferManagerHeaderSize)
 
 	return ret, nil
 }
 
 // MappingBufferManager maps an existing buffer manager from shared memory
 // Verified against legacy/buffer_manager.go:299-335
-func MappingBufferManager(path string, mem []byte, bufferRegionStartOffset uint32) (*BufferManager, error) {
-	if len(mem) <= int(bufferRegionStartOffset+bmCapOffset) || len(mem) <= int(bufferRegionStartOffset) {
-		return nil, fmt.Errorf("mem's size is at least:%d but:%d bufferRegionStartOffset:%d",
-			bufferRegionStartOffset+bmCapOffset+1, len(mem), bufferRegionStartOffset)
+func MappingBufferManager(path string, mem []byte) (*BufferManager, error) {
+	if len(mem) <= bmCapOffset {
+		return nil, fmt.Errorf("mem's size is at least:%d but:%d", bmCapOffset+1, len(mem))
 	}
 
-	listNum := int(*(*uint16)(unsafe.Pointer(&mem[bufferRegionStartOffset])))
+	listNum := int(*(*uint16)(unsafe.Pointer(&mem[0])))
 	freeLists := make([]*BufferList, 0, listNum)
-	length := *(*uint32)(unsafe.Pointer(&mem[bufferRegionStartOffset+bmCapOffset]))
+	length := *(*uint32)(unsafe.Pointer(&mem[bmCapOffset]))
 
 	if len(mem) < bufferManagerHeaderSize+int(length) || listNum == 0 {
 		return nil, fmt.Errorf("could not mappingBufferManager, listNum:%d len(mem) at least:%d but:%d",
@@ -465,7 +464,7 @@ func MappingBufferManager(path string, mem []byte, bufferRegionStartOffset uint3
 	hadUsedOffset := uint32(bufferManagerHeaderSize)
 
 	for i := 0; i < listNum; i++ {
-		l, err := mappingBufferList(mem, bufferRegionStartOffset+hadUsedOffset)
+		l, err := mappingBufferList(mem[hadUsedOffset:])
 		if err != nil {
 			return nil, err
 		}

@@ -186,11 +186,9 @@ func (c *Client) exchangeSharedMemoryMetadata() error {
 
 // exchangeFilePathMetadata handles file-based shared memory metadata exchange
 func (c *Client) exchangeFilePathMetadata() error {
-	// Generate and send metadata
-	metadata, err := c.shmManager.GenerateMetadata(c.version, typeShareMemoryByFilePath)
-	if err != nil {
-		return err
-	}
+	// Generate metadata using message type
+	msg := NewMessageShareMemory(c.version, c.shmManager.GetQueuePath(), c.shmManager.GetBufferPath())
+	metadata := msg.AppendByType(nil, typeShareMemoryByFilePath)
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -209,8 +207,7 @@ func (c *Client) exchangeFilePathMetadata() error {
 	}
 
 	// Wait for acknowledgment
-	_, err = c.conn.Read(c.recvBuf[:headerSize])
-	if err != nil {
+	if _, err := c.conn.Read(c.recvBuf[:headerSize]); err != nil {
 		return err
 	}
 

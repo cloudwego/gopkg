@@ -1,24 +1,19 @@
 package shmipc
 
-import (
-	"encoding/binary"
-)
-
-// MessageShareMemoryByMemFD represents a shared memory metadata message for MemFD.
-// After sending this message, the sender must wait for typeAckReadyRecvFD response,
-// then send the actual file descriptors using SCM_RIGHTS ancillary data.
-type MessageShareMemoryByMemFD struct {
+// MessageShareMemory represents a shared memory metadata message.
+// It contains two string fields (queue and buffer paths/names) and can be used
+// for both file-based (/dev/shm) and memfd-based shared memory.
+type MessageShareMemory struct {
 	Header
-	QueueFile  string // MemFD name for queue
-	BufferFile string // MemFD name for buffer
+	QueueFile  string // Queue path (file-based) or name (memfd)
+	BufferFile string // Buffer path (file-based) or name (memfd)
 }
 
-// Append encodes the MessageShareMemoryByMemFD message to the provided buffer
-func (m *MessageShareMemoryByMemFD) Append(buf []byte) []byte {
+// Append encodes the message to the provided buffer
+func (m *MessageShareMemory) Append(buf []byte) []byte {
 	// Update header fields
 	m.Header.Length = uint32(m.Size())
 	m.Header.Magic = headerMagic
-	m.Header.Type = uint8(typeShareMemoryByMemfd)
 
 	// Encode header
 	buf = m.Header.Append(buf)
@@ -32,8 +27,14 @@ func (m *MessageShareMemoryByMemFD) Append(buf []byte) []byte {
 	return buf
 }
 
-// Decode decodes the MessageShareMemoryByMemFD message from bytes
-func (m *MessageShareMemoryByMemFD) Decode(data []byte) error {
+// AppendByType encodes the message with a specific event type
+func (m *MessageShareMemory) AppendByType(buf []byte, eventType eventType) []byte {
+	m.Header.Type = uint8(eventType)
+	return m.Append(buf)
+}
+
+// Decode decodes the message from bytes
+func (m *MessageShareMemory) Decode(data []byte) error {
 	if len(data) < headerSize {
 		return ErrBufferTooShort
 	}
@@ -54,7 +55,7 @@ func (m *MessageShareMemoryByMemFD) Decode(data []byte) error {
 	offset += n
 
 	// Decode buffer file
-	bufferFile, n, err := decodeStr(data[offset:])
+	bufferFile, _, err := decodeStr(data[offset:])
 	if err != nil {
 		return err
 	}
@@ -64,18 +65,18 @@ func (m *MessageShareMemoryByMemFD) Decode(data []byte) error {
 }
 
 // Size returns the total size of the encoded message
-func (m *MessageShareMemoryByMemFD) Size() int {
+func (m *MessageShareMemory) Size() int {
 	return headerSize + 2 + len(m.QueueFile) + 2 + len(m.BufferFile)
 }
 
-// NewMessageShareMemoryByMemFD creates a new MessageShareMemoryByMemFD message
-func NewMessageShareMemoryByMemFD(version uint8, queueFile, bufferFile string) *MessageShareMemoryByMemFD {
-	return &MessageShareMemoryByMemFD{
+// NewMessageShareMemory creates a new MessageShareMemory message
+func NewMessageShareMemory(version uint8, queueFile, bufferFile string) *MessageShareMemory {
+	return &MessageShareMemory{
 		Header: Header{
 			Length:  uint32(headerSize + 2 + len(queueFile) + 2 + len(bufferFile)),
 			Magic:   headerMagic,
 			Version: version,
-			Type:    uint8(typeShareMemoryByMemfd),
+			// Type will be set when calling AppendByType
 		},
 		QueueFile:  queueFile,
 		BufferFile: bufferFile,

@@ -1,12 +1,12 @@
 package shmipc
 
 import (
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"net"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"syscall"
 	"time"
@@ -34,12 +34,6 @@ type SharedMemoryManager interface {
 	// Initialize sets up the shared memory regions
 	Initialize() error
 
-	// GenerateMetadata creates the metadata payload for sharing with peer
-	GenerateMetadata(version uint8, eventType eventType) ([]byte, error)
-
-	// ParseMetadata processes received metadata from peer
-	ParseMetadata(data []byte) error
-
 	// Cleanup removes shared memory resources
 	Cleanup() error
 
@@ -60,27 +54,44 @@ type FileBasedShmManager struct {
 	initialized bool
 }
 
+// generateUniqueName generates a unique name suffix using timestamp
+func generateUniqueName() string {
+	return strconv.Itoa(int(time.Now().UnixNano() % 1000000))
+}
+
 // NewFileBasedShmManager creates a new file-based shared memory manager
 func NewFileBasedShmManager() *FileBasedShmManager {
 	pid := os.Getpid()
-	timestamp := strconv.Itoa(int(time.Now().UnixNano() % 1000000))
+	suffix := generateUniqueName()
+
+	var baseDir string
+	if runtime.GOOS == "linux" {
+		baseDir = "/dev/shm"
+	} else {
+		baseDir = os.TempDir()
+	}
+
+	queueName := fmt.Sprintf("shmipc_queue_%d_%s", pid, suffix)
+	bufferName := fmt.Sprintf("shmipc_buffer_%d_%s", pid, suffix)
 
 	return &FileBasedShmManager{
-		queuePath:  fmt.Sprintf("/dev/shm/shmipc_queue_%d_%s", pid, timestamp),
-		bufferPath: fmt.Sprintf("/dev/shm/shmipc_buffer_%d_%s", pid, timestamp),
-		initialized: false,
+		queuePath:  filepath.Join(baseDir, queueName),
+		bufferPath: filepath.Join(baseDir, bufferName),
 	}
 }
 
+const (
+	queueSize  = 32 * 1024
+	bufferSize = 32 * 1024 * 1024
+)
+
 // Initialize sets up the shared memory files
 func (f *FileBasedShmManager) Initialize() error {
-	// Create queue shared memory file
-	if err := f.createSharedMemoryFile(f.queuePath, 32*1024); err != nil {
+	if err := createShmFile(f.queuePath, queueSize); err != nil {
 		return fmt.Errorf("failed to create queue shared memory: %w", err)
 	}
 
-	// Create buffer shared memory file
-	if err := f.createSharedMemoryFile(f.bufferPath, 32*1024*1024); err != nil {
+	if err := createShmFile(f.bufferPath, bufferSize); err != nil {
 		os.Remove(f.queuePath) // cleanup
 		return fmt.Errorf("failed to create buffer shared memory: %w", err)
 	}
@@ -89,110 +100,37 @@ func (f *FileBasedShmManager) Initialize() error {
 	return nil
 }
 
-// createSharedMemoryFile creates a shared memory file with the given size
-func (f *FileBasedShmManager) createSharedMemoryFile(path string, size int) error {
+// createShmFile creates a shared memory file with the given size
+func createShmFile(path string, size int) error {
 	file, err := os.Create(path)
 	if err != nil {
 		return err
 	}
 	defer file.Close()
 
-	// Set file size
-	if err := file.Truncate(int64(size)); err != nil {
-		return err
-	}
-
-	return nil
+	return file.Truncate(int64(size))
 }
 
-// GenerateMetadata creates metadata payload for typeShareMemoryByFilePath
-func (f *FileBasedShmManager) GenerateMetadata(version uint8, eventType eventType) ([]byte, error) {
-	if !f.initialized {
-		return nil, ErrShmNotInitialized
+// removeIfExists removes a file if it exists, ignoring not-exist errors
+func removeIfExists(path string) error {
+	if path == "" {
+		return nil
 	}
-
-	// Layout: header + queuePathLen(2) + queuePath + bufferPathLen(2) + bufferPath
-	queuePathLen := len(f.queuePath)
-	bufferPathLen := len(f.bufferPath)
-	totalSize := headerSize + 2 + queuePathLen + 2 + bufferPathLen
-
-	data := make([]byte, totalSize)
-	offset := headerSize
-
-	// Queue path length and path
-	binary.BigEndian.PutUint16(data[offset:offset+2], uint16(queuePathLen))
-	offset += 2
-	copy(data[offset:offset+queuePathLen], f.queuePath)
-	offset += queuePathLen
-
-	// Buffer path length and path
-	binary.BigEndian.PutUint16(data[offset:offset+2], uint16(bufferPathLen))
-	offset += 2
-	copy(data[offset:offset+bufferPathLen], f.bufferPath)
-
-	// Encode header
-	header := Header{
-		Length:  uint32(totalSize),
-		Magic:   headerMagic,
-		Version: version,
-		Type:    uint8(eventType),
+	err := os.Remove(path)
+	if os.IsNotExist(err) {
+		return nil
 	}
-	header.Append(data[:headerSize])
-
-	return data, nil
-}
-
-// ParseMetadata processes received metadata from peer
-func (f *FileBasedShmManager) ParseMetadata(data []byte) error {
-	if len(data) < headerSize {
-		return ErrBufferTooShort
-	}
-
-	offset := headerSize
-
-	// Read queue path length
-	if len(data) < offset+2 {
-		return ErrBufferTooShort
-	}
-	queuePathLen := int(binary.BigEndian.Uint16(data[offset : offset+2]))
-	offset += 2
-
-	// Read queue path
-	if len(data) < offset+queuePathLen {
-		return ErrBufferTooShort
-	}
-	f.queuePath = string(data[offset : offset+queuePathLen])
-	offset += queuePathLen
-
-	// Read buffer path length
-	if len(data) < offset+2 {
-		return ErrBufferTooShort
-	}
-	bufferPathLen := int(binary.BigEndian.Uint16(data[offset : offset+2]))
-	offset += 2
-
-	// Read buffer path
-	if len(data) < offset+bufferPathLen {
-		return ErrBufferTooShort
-	}
-	f.bufferPath = string(data[offset : offset+bufferPathLen])
-
-	f.initialized = true
-	return nil
+	return err
 }
 
 // Cleanup removes shared memory resources
 func (f *FileBasedShmManager) Cleanup() error {
 	var lastErr error
-	if f.queuePath != "" {
-		if err := os.Remove(f.queuePath); err != nil && !os.IsNotExist(err) {
-			lastErr = err
-		}
+	if err := removeIfExists(f.queuePath); err != nil {
+		lastErr = err
 	}
-	if f.bufferPath != "" {
-		if err := os.Remove(f.bufferPath); err != nil && !os.IsNotExist(err) {
-			lastErr = err
-		}
+	if err := removeIfExists(f.bufferPath); err != nil {
+		lastErr = err
 	}
 	f.initialized = false
 	return lastErr
@@ -222,20 +160,17 @@ type MemFDBasedShmManager struct {
 	initialized bool
 }
 
-const (
-	memfdCreateName = "shmipc"
-	memfdQueueSize  = 32 * 1024
-	memfdBufferSize = 32 * 1024 * 1024
-)
+const memfdCreateName = "shmipc"
 
 // NewMemFDBasedShmManager creates a new memfd-based shared memory manager
 func NewMemFDBasedShmManager() *MemFDBasedShmManager {
-	timestamp := strconv.Itoa(int(time.Now().UnixNano() % 1000000))
+	suffix := generateUniqueName()
 
 	return &MemFDBasedShmManager{
-		queueName:  memfdCreateName + "_queue_" + timestamp,
-		bufferName: memfdCreateName + "_buffer_" + timestamp,
-		initialized: false,
+		queueName:  memfdCreateName + "_queue_" + suffix,
+		bufferName: memfdCreateName + "_buffer_" + suffix,
+		queueFd:    -1,
+		bufferFd:   -1,
 	}
 }
 
@@ -282,13 +217,13 @@ func (m *MemFDBasedShmManager) memfdCreate(name string, size int) (int, error) {
 // Initialize sets up the memfd shared memory
 func (m *MemFDBasedShmManager) Initialize() error {
 	// Create queue memfd
-	queueFd, err := m.memfdCreate(m.queueName, memfdQueueSize)
+	queueFd, err := m.memfdCreate(m.queueName, queueSize)
 	if err != nil {
 		return fmt.Errorf("failed to create queue memfd: %w", err)
 	}
 
 	// Create buffer memfd
-	bufferFd, err := m.memfdCreate(m.bufferName, memfdBufferSize)
+	bufferFd, err := m.memfdCreate(m.bufferName, bufferSize)
 	if err != nil {
 		syscall.Close(queueFd)
 		return fmt.Errorf("failed to create buffer memfd: %w", err)
@@ -300,53 +235,24 @@ func (m *MemFDBasedShmManager) Initialize() error {
 	return nil
 }
 
-// GenerateMetadata creates metadata payload for typeShareMemoryByMemfd
-func (m *MemFDBasedShmManager) GenerateMetadata(version uint8, eventType eventType) ([]byte, error) {
-	if !m.initialized {
-		return nil, ErrShmNotInitialized
-	}
-
-	msg := &MessageShareMemoryByMemFD{
-		Header: Header{
-			Version: version,
-		},
-		QueueFile:  m.queueName,
-		BufferFile: m.bufferName,
-	}
-
-	return msg.Append(nil), nil
-}
-
-// ParseMetadata processes received metadata from peer
-func (m *MemFDBasedShmManager) ParseMetadata(data []byte) error {
-	var msg MessageShareMemoryByMemFD
-	if err := msg.Decode(data); err != nil {
+// closeFd closes a file descriptor if valid (>= 0)
+func closeFd(fd *int) error {
+	if *fd >= 0 {
+		err := syscall.Close(*fd)
+		*fd = -1
 		return err
 	}
-
-	m.queueName = msg.QueueFile
-	m.bufferName = msg.BufferFile
-
-	// Note: In a real implementation, we would receive the actual file descriptors
-	// via Unix domain socket SCM_RIGHTS. For this example, we'll just store the names.
-	m.initialized = true
 	return nil
 }
 
 // Cleanup closes file descriptors
 func (m *MemFDBasedShmManager) Cleanup() error {
 	var lastErr error
-	if m.queueFd >= 0 {
-		if err := syscall.Close(m.queueFd); err != nil {
-			lastErr = err
-		}
-		m.queueFd = -1
+	if err := closeFd(&m.queueFd); err != nil {
+		lastErr = err
 	}
-	if m.bufferFd >= 0 {
-		if err := syscall.Close(m.bufferFd); err != nil {
-			lastErr = err
-		}
-		m.bufferFd = -1
+	if err := closeFd(&m.bufferFd); err != nil {
+		lastErr = err
 	}
 	m.initialized = false
 	return lastErr
@@ -379,21 +285,21 @@ func (m *MemFDBasedShmManager) GetBufferFd() int {
 
 // SendMetadataAndFDs sends MemFD metadata and file descriptors to peer via Unix domain socket
 func (m *MemFDBasedShmManager) SendMetadataAndFDs(conn net.Conn, version uint8) error {
-	// 1. Send metadata
-	metadata, err := m.GenerateMetadata(version, typeShareMemoryByMemfd)
-	if err != nil {
-		return fmt.Errorf("failed to generate metadata: %w", err)
+	if !m.initialized {
+		return ErrShmNotInitialized
 	}
 
-	_, err = conn.Write(metadata)
-	if err != nil {
+	// 1. Send metadata
+	msg := NewMessageShareMemory(version, m.queueName, m.bufferName)
+	metadata := msg.AppendByType(nil, typeShareMemoryByMemfd)
+
+	if _, err := conn.Write(metadata); err != nil {
 		return fmt.Errorf("failed to send metadata: %w", err)
 	}
 
 	// 2. Wait for ack
 	headerBuf := make([]byte, headerSize)
-	_, err = conn.Read(headerBuf)
-	if err != nil {
+	if _, err := conn.Read(headerBuf); err != nil {
 		return fmt.Errorf("failed to read ack: %w", err)
 	}
 
@@ -407,8 +313,7 @@ func (m *MemFDBasedShmManager) SendMetadataAndFDs(conn net.Conn, version uint8) 
 	}
 
 	// 3. Send file descriptors
-	err = sendFileDescriptors(conn, m.bufferFd, m.queueFd)
-	if err != nil {
+	if err := sendFileDescriptors(conn, m.bufferFd, m.queueFd); err != nil {
 		return fmt.Errorf("failed to send file descriptors: %w", err)
 	}
 
