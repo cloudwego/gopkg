@@ -21,7 +21,7 @@ import "unsafe"
 // io_uring_sqe represents a submission queue entry
 // This structure describes an I/O operation to be performed
 // Size must be exactly 64 bytes for kernel ABI compatibility
-type IoUringSQE struct {
+type IOUringSQE struct {
 	Opcode      uint8     // Operation code (IORING_OP_*)
 	Flags       uint8     // Flags modifier for operation
 	IoPrio      uint16    // Priority for this request
@@ -40,7 +40,7 @@ type IoUringSQE struct {
 // io_uring_cqe represents a completion queue entry
 // This structure contains the result of a completed I/O operation
 // Size must be exactly 16 bytes for kernel ABI compatibility
-type IoUringCQE struct {
+type IOUringCQE struct {
 	UserData uint64 // User data from submission (identifies request)
 	Res      int32  // Result of operation (bytes transferred or -errno)
 	Flags    uint32 // Flags about the completion
@@ -60,16 +60,16 @@ func (p *Iovec) Set(b []byte) {
 	}
 }
 
-// KernelTimespec represents a kernel timespec structure for io_uring operations.
+// TimeSpec represents a kernel timespec structure for io_uring operations.
 // This is used for timeout operations and matches the kernel's __kernel_timespec layout.
-type KernelTimespec struct {
+type TimeSpec struct {
 	TvSec  int64 // Seconds
 	TvNsec int64 // Nanoseconds
 }
 
 // IsZero returns true if the timespec represents zero time.
-func (p *KernelTimespec) IsZero() bool {
-	return *p == KernelTimespec{}
+func (p *TimeSpec) IsZero() bool {
+	return *p == TimeSpec{}
 }
 
 // Msghdr represents a message header for sendmsg/recvmsg operations

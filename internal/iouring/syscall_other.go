@@ -25,7 +25,7 @@ import (
 
 // Setup is a stub implementation for non-Linux platforms.
 // Returns ENOSYS as io_uring is only supported on Linux.
-func Setup(entries uint32, params *IoUringParams) (int, error) {
+func Setup(entries uint32, params *IOUringParams) (int, error) {
 	return 0, syscall.ENOSYS
 }
 

@@ -24,6 +24,9 @@ import (
 	"testing"
 	"time"
 	"unsafe"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // skipIfUnsupported checks if io_uring is available and skips the test if not
@@ -33,10 +36,8 @@ func skipIfUnsupported(t *testing.T) {
 	}
 
 	// Try to create a minimal io_uring to check kernel support
-	ring, err := NewIoUring(2)
-	if err != nil {
-		t.Skipf("io_uring not supported: %v (requires Linux 5.4+)", err)
-	}
+	ring, err := NewIOUring(2)
+	require.NoError(t, err)
 	ring.Close()
 }
 
@@ -45,16 +46,13 @@ func getFd(t *testing.T, conn net.Conn) int {
 	t.Helper()
 
 	syscallConn, err := conn.(syscall.Conn).SyscallConn()
-	if err != nil {
-		t.Fatalf("failed to get SyscallConn: %v", err)
-	}
+	require.NoError(t, err)
 
 	var fd int
-	if err := syscallConn.Control(func(f uintptr) {
+	err = syscallConn.Control(func(f uintptr) {
 		fd = int(f)
-	}); err != nil {
-		t.Fatalf("failed to get file descriptor: %v", err)
-	}
+	})
+	require.NoError(t, err)
 
 	return fd
 }
@@ -76,9 +74,7 @@ func createConnections(t *testing.T, n int) []connPair {
 
 	// Create a listener
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("net.Listen failed: %v", err)
-	}
+	require.NoError(t, err)
 	defer ln.Close()
 
 	ret := make([]connPair, n)
@@ -89,18 +85,14 @@ func createConnections(t *testing.T, n int) []connPair {
 		defer wg.Done()
 		for i := 0; i < n; i++ {
 			conn, err := ln.Accept()
-			if err != nil {
-				panic(err)
-			}
+			require.NoError(t, err)
 			ret[i].server = conn
 		}
 	}()
 	addr := ln.Addr().String()
 	for i := 0; i < n; i++ { // Create client connection
 		conn, err := net.Dial("tcp", addr)
-		if err != nil {
-			t.Fatalf("net.Dial: %v", err)
-		}
+		require.NoError(t, err)
 		ret[i].client = conn
 	}
 	wg.Wait()
@@ -110,10 +102,8 @@ func createConnections(t *testing.T, n int) []connPair {
 func TestConnectionReadWrite(t *testing.T) {
 	skipIfUnsupported(t)
 
-	ring, err := NewIoUring(10)
-	if err != nil {
-		t.Fatalf("NewIoUring failed: %v", err)
-	}
+	ring, err := NewIOUring(10)
+	require.NoError(t, err)
 	defer ring.Close()
 
 	c := createConnections(t, 1)[0]
@@ -153,55 +143,39 @@ func TestConnectionReadWrite(t *testing.T) {
 
 	// Submit both operations to kernel
 	submitted, errno := ring.Submit()
-	if errno != 0 {
-		t.Fatalf("Submit failed: %v", errno)
-	}
-	if submitted != 2 {
-		t.Fatalf("expected 2 submissions, got %d", submitted)
-	}
+	require.Equal(t, syscall.Errno(0), errno)
+	require.Equal(t, 2, submitted)
 
 	// Wait for both completions
 	var readRes, writeRes int32
 	for i := 0; i < 2; i++ {
 		cqe, err := ring.WaitCQE()
-		if err != nil {
-			t.Fatalf("WaitCQE failed: %v", err)
-		}
+		require.NoError(t, err)
 
 		switch cqe.UserData {
 		case 100: // read completion
-			if cqe.Res < 0 {
-				t.Fatalf("read failed with error: %d", cqe.Res)
-			}
+			require.GreaterOrEqual(t, cqe.Res, int32(0))
 			readRes = cqe.Res
 			t.Logf("read completed: %d bytes", cqe.Res)
 		case 200: // write completion
-			if cqe.Res < 0 {
-				t.Fatalf("write failed with error: %d", cqe.Res)
-			}
+			require.GreaterOrEqual(t, cqe.Res, int32(0))
 			writeRes = cqe.Res
 			t.Logf("write completed: %d bytes", cqe.Res)
 		default:
-			t.Fatalf("unexpected user data: %d", cqe.UserData)
+			require.Fail(t, "unexpected user data")
 		}
 		ring.AdvanceCQ()
 	}
 
 	// Verify write completed successfully
-	if writeRes != int32(len(testData)) {
-		t.Fatalf("expected to write %d bytes, wrote %d", len(testData), writeRes)
-	}
+	require.Equal(t, int32(len(testData)), writeRes)
 
 	// Verify read completed successfully
-	if readRes != int32(len(testData)) {
-		t.Fatalf("expected to read %d bytes, read %d", len(testData), readRes)
-	}
+	require.Equal(t, int32(len(testData)), readRes)
 
 	// Verify data
 	readData := readBuf[:readRes]
-	if string(readData) != string(testData) {
-		t.Fatalf("data mismatch: expected %q, got %q", testData, readData)
-	}
+	assert.Equal(t, string(testData), string(readData))
 
 	t.Logf("successfully transferred %d bytes: %q", readRes, readData)
 }
@@ -212,10 +186,8 @@ func TestConnectionClosed(t *testing.T) {
 	const numConns = 10
 
 	// Create io_uring instance with enough entries
-	ring, err := NewIoUring(2 * numConns)
-	if err != nil {
-		t.Fatalf("NewIoUring failed: %v", err)
-	}
+	ring, err := NewIOUring(2 * numConns)
+	require.NoError(t, err)
 	defer ring.Close()
 
 	// Create 10 connections
@@ -229,9 +201,7 @@ func TestConnectionClosed(t *testing.T) {
 	// Submit POLL_ADD operations for all server connections
 	for i := 0; i < numConns; i++ {
 		sqe := ring.PeekSQE(true)
-		if sqe == nil {
-			t.Fatalf("failed to get SQE for conn %d", i)
-		}
+		require.NotNil(t, sqe)
 		sqe.Opcode = IORING_OP_POLL_ADD
 		sqe.Fd = int32(getFd(t, conns[i].server))
 		sqe.UserData = uint64(i) // Use index as user data
@@ -240,12 +210,8 @@ func TestConnectionClosed(t *testing.T) {
 	}
 	// Submit all operations to kernel
 	submitted, errno := ring.Submit()
-	if errno != 0 {
-		t.Fatalf("Submit failed: %v", errno)
-	}
-	if submitted != numConns {
-		t.Fatalf("expected %d submissions, got %d", numConns, submitted)
-	}
+	require.Equal(t, syscall.Errno(0), errno)
+	require.Equal(t, numConns, submitted)
 
 	// Close some connections
 	closedIndices := make(map[int]bool)
@@ -258,15 +224,9 @@ func TestConnectionClosed(t *testing.T) {
 	time.Sleep(10 * time.Millisecond) // 10ms should be enough
 	for i := 0; i < len(closedIndices); i++ {
 		cqe := ring.PeekCQE() // using PeekCQE without calling io_uring_enter
-		if cqe == nil {
-			t.Fatalf("[%d] CQE = nil", i)
-		}
-		if !closedIndices[int(cqe.UserData)] {
-			t.Fatalf("unexpected userdata: %v", cqe.UserData)
-		}
-		if uint32(cqe.Res)&(POLLHUP|POLLRDHUP|POLLERR) == 0 {
-			t.Fatalf("unexpected res: %x", cqe.Res)
-		}
+		require.NotNil(t, cqe)
+		assert.True(t, closedIndices[int(cqe.UserData)])
+		assert.NotZero(t, uint32(cqe.Res)&(POLLHUP|POLLRDHUP|POLLERR))
 		t.Logf("conn closed: %d", cqe.UserData)
 		ring.AdvanceCQ() // next CQE
 	}

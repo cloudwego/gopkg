@@ -26,7 +26,7 @@ import (
 // Setup initializes io_uring
 // Creates an io_uring instance with specified number of entries
 // Returns file descriptor on success, error on failure
-func Setup(entries uint32, params *IoUringParams) (int, error) {
+func Setup(entries uint32, params *IOUringParams) (int, error) {
 	fd, _, errno := syscall.Syscall(
 		425, // SYS_IO_URING_SETUP
 		uintptr(entries),

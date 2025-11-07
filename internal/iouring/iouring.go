@@ -26,7 +26,7 @@
 //
 // Example usage:
 //
-//	ring, err := iouring.NewIoUring(32)
+//	ring, err := iouring.NewIOUring(32)
 //	if err != nil {
 //	    // handle error
 //	}
@@ -140,21 +140,21 @@ const (
 
 // io_uring_params for setup syscall
 // Used both as input (flags, sq_thread_*) and output (features, offsets)
-type IoUringParams struct {
-	SqEntries    uint32          // Number of submission queue entries (power of 2)
-	CqEntries    uint32          // Number of completion queue entries
-	Flags        uint32          // Setup flags (IORING_SETUP_*)
-	SqThreadCpu  uint32          // CPU for SQPOLL thread
-	SqThreadIdle uint32          // Milliseconds before SQPOLL thread sleeps
-	Features     uint32          // Kernel-supported features (output)
-	WqFd         uint32          // Existing workqueue fd to attach to
-	Resv         [3]uint32       // Reserved for future use
-	SqOff        IoSqringOffsets // Submission queue ring offsets (output)
-	CqOff        IoCqringOffsets // Completion queue ring offsets (output)
+type IOUringParams struct {
+	SqEntries    uint32        // Number of submission queue entries (power of 2)
+	CqEntries    uint32        // Number of completion queue entries
+	Flags        uint32        // Setup flags (IORING_SETUP_*)
+	SqThreadCPU  uint32        // CPU for SQPOLL thread
+	SqThreadIdle uint32        // Milliseconds before SQPOLL thread sleeps
+	Features     uint32        // Kernel-supported features (output)
+	WqFd         uint32        // Existing workqueue fd to attach to
+	Resv         [3]uint32     // Reserved for future use
+	SqOff        SQRingOffsets // Submission queue ring offsets (output)
+	CqOff        CQRingOffsets // Completion queue ring offsets (output)
 }
 
-// IoSqringOffsets - byte offsets into mmap'd SQ ring for locating fields
-type IoSqringOffsets struct {
+// SQRingOffsets - byte offsets into mmap'd SQ ring for locating fields
+type SQRingOffsets struct {
 	Head        uint32 // Head pointer (consumer, kernel updates)
 	Tail        uint32 // Tail pointer (producer, app updates)
 	RingMask    uint32 // Ring mask (entries - 1)
@@ -166,8 +166,8 @@ type IoSqringOffsets struct {
 	Resv2       uint64
 }
 
-// IoCqringOffsets - byte offsets into mmap'd CQ ring for locating fields
-type IoCqringOffsets struct {
+// CQRingOffsets - byte offsets into mmap'd CQ ring for locating fields
+type CQRingOffsets struct {
 	Head        uint32 // Head pointer (consumer, app updates)
 	Tail        uint32 // Tail pointer (producer, kernel updates)
 	RingMask    uint32 // Ring mask (entries - 1)
@@ -179,11 +179,11 @@ type IoCqringOffsets struct {
 	Resv2       uint64
 }
 
-// IoUring represents an io_uring instance
+// IOUring represents an io_uring instance
 // Contains the file descriptor and memory-mapped regions
-type IoUring struct {
+type IOUring struct {
 	fd      int             // io_uring file descriptor
-	params  IoUringParams   // Parameters from setup
+	params  IOUringParams   // Parameters from setup
 	sq      SubmissionQueue // Submission queue state
 	cq      CompletionQueue // Completion queue state
 	sqeMem  []byte          // Memory-mapped SQE array
@@ -201,7 +201,7 @@ type SubmissionQueue struct {
 	flags       *uint32      // Flags - shared, modified at runtime
 	dropped     *uint32      // Dropped submissions - shared, modified at runtime
 	array       *uint32      // SQE index array - pointer for indexing
-	sqes        []IoUringSQE // Submission queue entries array
+	sqes        []IOUringSQE // Submission queue entries array
 }
 
 // CompletionQueue represents the completion queue state.
@@ -213,15 +213,15 @@ type CompletionQueue struct {
 	ringMask    uint32       // Mask for ring wrap - constant after init
 	ringEntries uint32       // Number of entries - constant after init
 	overflow    *uint32      // Overflow counter - shared, modified at runtime
-	cqes        []IoUringCQE // Completion queue entries array
+	cqes        []IOUringCQE // Completion queue entries array
 }
 
-// NewIoUring creates a new io_uring instance
+// NewIOUring creates a new io_uring instance
 // entries: size of submission queue (must be power of 2)
 // Returns initialized io_uring instance with memory mappings
 // Requires Linux 5.4+ (IORING_FEAT_SINGLE_MMAP support)
-func NewIoUring(entries uint32) (*IoUring, error) {
-	params := IoUringParams{}
+func NewIOUring(entries uint32) (*IOUring, error) {
+	params := IOUringParams{}
 	fd, err := Setup(entries, &params)
 	if err != nil {
 		return nil, fmt.Errorf("io_uring_setup failed: %v", err)
@@ -233,7 +233,7 @@ func NewIoUring(entries uint32) (*IoUring, error) {
 		return nil, fmt.Errorf("kernel does not support IORING_FEAT_SINGLE_MMAP (requires Linux 5.4+)")
 	}
 
-	ring := &IoUring{
+	ring := &IOUring{
 		fd:     fd,
 		params: params,
 	}
@@ -243,7 +243,7 @@ func NewIoUring(entries uint32) (*IoUring, error) {
 	// Use single mmap for both SQ and CQ rings (IORING_FEAT_SINGLE_MMAP)
 	// Calculate size to cover both rings - need to include both SQ and CQ regions
 	sqRingSize := params.SqOff.Array + params.SqEntries*uint32(unsafe.Sizeof(uint32(0)))
-	cqRingSize := params.CqOff.Cqes + params.CqEntries*uint32(unsafe.Sizeof(IoUringCQE{}))
+	cqRingSize := params.CqOff.Cqes + params.CqEntries*uint32(unsafe.Sizeof(IOUringCQE{}))
 
 	// Take the maximum of both sizes to ensure we map enough memory
 	ringSize := sqRingSize
@@ -263,7 +263,7 @@ func NewIoUring(entries uint32) (*IoUring, error) {
 	ring.ringMem = ringPtr
 
 	// Map SQE array (separate mapping at offset 0x10000000)
-	sqeSize := params.SqEntries * uint32(unsafe.Sizeof(IoUringSQE{}))
+	sqeSize := params.SqEntries * uint32(unsafe.Sizeof(IOUringSQE{}))
 	sqePtr, err := syscall.Mmap(fd, int64(0x10000000), int(sqeSize),
 		syscall.PROT_READ|syscall.PROT_WRITE,
 		syscall.MAP_SHARED|syscall.MAP_POPULATE)
@@ -281,7 +281,7 @@ func NewIoUring(entries uint32) (*IoUring, error) {
 	ring.sq.flags = (*uint32)(unsafe.Pointer(&ring.ringMem[params.SqOff.Flags]))
 	ring.sq.dropped = (*uint32)(unsafe.Pointer(&ring.ringMem[params.SqOff.Dropped]))
 	ring.sq.array = (*uint32)(unsafe.Pointer(&ring.ringMem[params.SqOff.Array]))
-	ring.sq.sqes = (*[0x10000]IoUringSQE)(unsafe.Pointer(&ring.sqeMem[0]))[:params.SqEntries]
+	ring.sq.sqes = (*[0x10000]IOUringSQE)(unsafe.Pointer(&ring.sqeMem[0]))[:params.SqEntries]
 
 	// Setup completion queue pointers and values
 	// Pointers are shared with kernel - must use atomic operations
@@ -292,10 +292,10 @@ func NewIoUring(entries uint32) (*IoUring, error) {
 	ring.cq.ringEntries = *(*uint32)(unsafe.Pointer(&ring.ringMem[params.CqOff.RingEntries]))
 	ring.cq.overflow = (*uint32)(unsafe.Pointer(&ring.ringMem[params.CqOff.Overflow]))
 	cqesPtr := unsafe.Pointer(&ring.ringMem[params.CqOff.Cqes])
-	ring.cq.cqes = (*[0x10000]IoUringCQE)(cqesPtr)[:params.CqEntries]
+	ring.cq.cqes = (*[0x10000]IOUringCQE)(cqesPtr)[:params.CqEntries]
 
 	// Set finalizer to ensure cleanup on GC
-	runtime.SetFinalizer(ring, func(r *IoUring) {
+	runtime.SetFinalizer(ring, func(r *IOUring) {
 		r.Close()
 	})
 
@@ -308,7 +308,7 @@ func NewIoUring(entries uint32) (*IoUring, error) {
 // After filling the SQE, the caller must call AdvanceSQ() to make it visible.
 // The caller is responsible for setting all necessary fields of the SQE,
 // as the returned SQE may contain stale data from a previous operation.
-func (ring *IoUring) PeekSQE(reset bool) *IoUringSQE {
+func (ring *IOUring) PeekSQE(reset bool) *IOUringSQE {
 	q := &ring.sq
 
 	tail := atomic.LoadUint32(q.tail)
@@ -322,7 +322,7 @@ func (ring *IoUring) PeekSQE(reset bool) *IoUringSQE {
 	sqe := &q.sqes[tail&q.ringMask]
 
 	if reset {
-		*sqe = IoUringSQE{}
+		*sqe = IOUringSQE{}
 	}
 
 	// Update indirection array: array[ring_pos] = sqe_index.
@@ -337,20 +337,20 @@ func (ring *IoUring) PeekSQE(reset bool) *IoUringSQE {
 // AdvanceSQ makes one submission queue entry visible to the kernel.
 // This should be called after the SQE from PeekSQE has been populated.
 // This acts as a memory barrier.
-func (ring *IoUring) AdvanceSQ() {
+func (ring *IOUring) AdvanceSQ() {
 	atomic.AddUint32(ring.sq.tail, 1)
 }
 
 // PendingSQEs returns the number of submission queue entries that have been
 // queued but not yet submitted to the kernel.
-func (ring *IoUring) PendingSQEs() uint32 {
+func (ring *IOUring) PendingSQEs() uint32 {
 	return atomic.LoadUint32(ring.sq.tail) - atomic.LoadUint32(ring.sq.head)
 }
 
 // Submit submits queued entries
 // Calls io_uring_enter to notify kernel of new submissions
 // Returns number of submissions accepted by kernel
-func (ring *IoUring) Submit() (int, syscall.Errno) {
+func (ring *IOUring) Submit() (int, syscall.Errno) {
 	// Number of pending SQEs = tail - head
 	toSubmit := ring.PendingSQEs()
 	if toSubmit == 0 {
@@ -373,7 +373,7 @@ func (ring *IoUring) Submit() (int, syscall.Errno) {
 // PeekCQE checks for a completion queue entry without blocking
 // Returns nil if no completion is available
 // Returns the CQE but does NOT advance the head - call AdvanceCQ after processing
-func (ring *IoUring) PeekCQE() *IoUringCQE {
+func (ring *IOUring) PeekCQE() *IOUringCQE {
 	q := &ring.cq
 	head := atomic.LoadUint32(q.head)
 	tail := atomic.LoadUint32(q.tail)
@@ -391,7 +391,7 @@ func (ring *IoUring) PeekCQE() *IoUringCQE {
 // WaitCQE waits for a completion queue entry
 // Blocks until at least one completion is available
 // Returns the CQE but does NOT advance the head - call AdvanceCQ after processing
-func (ring *IoUring) WaitCQE() (*IoUringCQE, error) {
+func (ring *IOUring) WaitCQE() (*IOUringCQE, error) {
 	q := &ring.cq
 	// Use atomic loads - kernel is producer, app is consumer for CQ
 	head := atomic.LoadUint32(q.head)
@@ -419,14 +419,14 @@ func (ring *IoUring) WaitCQE() (*IoUringCQE, error) {
 }
 
 // AdvanceCQ advances the completion queue head by one, freeing the oldest CQE slot.
-func (ring *IoUring) AdvanceCQ() {
+func (ring *IOUring) AdvanceCQ() {
 	atomic.AddUint32(ring.cq.head, 1)
 }
 
 // Close closes the io_uring instance and releases all associated resources.
 // This includes unregistering files, unmapping memory regions, and closing the file descriptor.
 // Returns the first error encountered during cleanup, if any.
-func (ring *IoUring) Close() error {
+func (ring *IOUring) Close() error {
 	if ring == nil {
 		return nil
 	}
