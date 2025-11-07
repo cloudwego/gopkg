@@ -81,8 +81,13 @@ func (g *Group) Go(f func() error) {
 		g.sem <- token{}
 	}
 
+	pool := g.pool
+	if pool == nil {
+		pool = defaultPool
+	}
+
 	g.wg.Add(1)
-	g.pool.Go(func() {
+	pool.Go(func() {
 		defer g.done()
 		if err := f(); err != nil {
 			g.errOnce.Do(func() {
@@ -109,8 +114,13 @@ func (g *Group) TryGo(f func() error) bool {
 		}
 	}
 
+	pool := g.pool
+	if pool == nil {
+		pool = defaultPool
+	}
+
 	g.wg.Add(1)
-	g.pool.Go(func() {
+	pool.Go(func() {
 		defer g.done()
 		if err := f(); err != nil {
 			g.errOnce.Do(func() {
