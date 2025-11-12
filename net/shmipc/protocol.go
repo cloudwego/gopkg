@@ -1,8 +1,8 @@
 package shmipc
 
 import (
-	"errors"
 	"encoding/binary"
+	"errors"
 )
 
 const (
@@ -14,22 +14,22 @@ var (
 	ErrBufferTooShort = errors.New("buffer too short")
 )
 
-type eventType uint8
+type messageType uint8
 
 const (
 	// typeShareMemoryByFilePath is deprecated but kept for fallback compatibility
-	typeShareMemoryByFilePath eventType = 0
-	typePolling                eventType = 1
-	typeStreamClose            eventType = 2
+	typeShareMemoryByFilePath messageType = 0
+	typePolling               messageType = 1
+	typeStreamClose           messageType = 2
 	// typePing // TODO
-	typeFallbackData           eventType = 3
-	typeExchangeProtoVersion   eventType = 4
+	typeFallbackData         messageType = 3
+	typeExchangeProtoVersion messageType = 4
 	// typeShareMemoryByMemfd is the primary method for version 3
-	typeShareMemoryByMemfd     eventType = 5
-	typeAckShareMemory         eventType = 6
-	typeAckReadyRecvFD         eventType = 7
-	typeHotRestart             eventType = 8
-	typeHotRestartAck          eventType = 9
+	typeShareMemoryByMemfd messageType = 5
+	typeAckShareMemory     messageType = 6
+	typeAckReadyRecvFD     messageType = 7
+	typeHotRestart         messageType = 8
+	typeHotRestartAck      messageType = 9
 )
 
 // Header represents the shared memory IPC packet header
@@ -91,4 +91,3 @@ func decodeStr(data []byte) (string, int, error) {
 	}
 	return string(data[2 : 2+slen]), 2 + slen, nil
 }
-

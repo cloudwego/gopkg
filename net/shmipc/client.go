@@ -1,6 +1,7 @@
 package shmipc
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
@@ -13,7 +14,7 @@ import (
 var (
 	ErrVersionMismatch    = errors.New("protocol version mismatch")
 	ErrUnsupportedVersion = errors.New("unsupported protocol version")
-	ErrInvalidMagic       = errors.New("invalid magic number")
+	ErrInvalid            = errors.New("invalid type or magic number")
 )
 
 const (
@@ -27,10 +28,18 @@ type Client struct {
 	mu            sync.RWMutex
 	closed        atomic.Bool
 	sendBuf       []byte
-	recvBuf       []byte
+	reader        *bufio.Reader
 	version       uint8
 	shmManager    SharedMemoryManager
 	handshakeDone bool
+	nextStreamID  atomic.Uint32
+
+	// Stream management
+	streams   map[uint32]*Stream
+	streamsMu sync.RWMutex
+
+	// Queue notification channel
+	queueNotifyCh chan struct{}
 }
 
 // ClientConfig contains client configuration
@@ -54,17 +63,25 @@ func NewClient(config ClientConfig) (*Client, error) {
 	}
 
 	client := &Client{
-		conn:    conn,
-		sendBuf: make([]byte, 4096), // Start with 4KB, will grow as needed
-		recvBuf: make([]byte, 4096), // Start with 4KB, will grow as needed
-		version: 3, // Use protocol version 3 initially, will be negotiated
+		conn:          conn,
+		sendBuf:       make([]byte, 16<<10),              // Start with 16KB, will grow as needed
+		reader:        bufio.NewReaderSize(conn, 16<<10), // 16KB read buffer
+		version:       3,                                 // Use protocol version 3 initially, will be negotiated
+		streams:       make(map[uint32]*Stream),
+		queueNotifyCh: make(chan struct{}, 1),
 	}
+	// Client uses odd stream IDs starting from 1
+	client.nextStreamID.Store(1)
 
 	// Perform version and shared memory handshake
 	if err := client.handshake(ctx); err != nil {
 		conn.Close()
 		return nil, err
 	}
+
+	// Start background goroutines for receiving and queue processing
+	go client.recvLoop()
+	go client.queueLoop()
 
 	return client, nil
 }
@@ -107,51 +124,24 @@ func (c *Client) handshake(ctx context.Context) error {
 
 // negotiateVersion handles the protocol version exchange
 func (c *Client) negotiateVersion() error {
-	header := Header{
-		Length:  uint32(headerSize),
-		Magic:   headerMagic,
-		Version: c.version,
-		Type:    uint8(typeExchangeProtoVersion),
-	}
-
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	// Ensure send buffer is large enough
-	if len(c.sendBuf) < headerSize {
-		newSize := headerSize + headerSize/2
-		if newSize < 8192 {
-			newSize = 8192
-		}
-		c.sendBuf = make([]byte, newSize)
-	}
-
-	// Send version
-	header.Append(c.sendBuf[:headerSize])
-	if _, err := c.conn.Write(c.sendBuf[:headerSize]); err != nil {
+	// Send version message
+	msg := NewMessageExchangeProtoVersion(c.version)
+	if err := c.SendMessage(msg); err != nil {
 		return err
 	}
 
 	// Receive server version response
-	_, err := c.conn.Read(c.recvBuf[:headerSize])
-	if err != nil {
-		return err
-	}
-
-	var responseHeader Header
-	if err := responseHeader.Decode(c.recvBuf[:headerSize]); err != nil {
+	var responseMsg MessageExchangeProtoVersion
+	if err := c.recvMessage(&responseMsg); err != nil {
 		return err
 	}
 
 	// Validate response
-	if !responseHeader.IsValid() {
-		return ErrInvalidMagic
-	}
-	if responseHeader.Type != uint8(typeExchangeProtoVersion) {
-		return ErrVersionMismatch
+	if !responseMsg.IsValid() {
+		return ErrInvalid
 	}
 
-	serverVersion := responseHeader.Version
+	serverVersion := responseMsg.Version
 	if serverVersion < MinSupportedVersion || serverVersion > MaxSupportedVersion {
 		return ErrUnsupportedVersion
 	}
@@ -186,38 +176,21 @@ func (c *Client) exchangeSharedMemoryMetadata() error {
 
 // exchangeFilePathMetadata handles file-based shared memory metadata exchange
 func (c *Client) exchangeFilePathMetadata() error {
-	// Generate metadata using message type
-	msg := NewMessageShareMemory(c.version, c.shmManager.GetQueuePath(), c.shmManager.GetBufferPath())
-	metadata := msg.AppendByType(nil, typeShareMemoryByFilePath)
-
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	// Ensure send buffer is large enough
-	if len(c.sendBuf) < len(metadata) {
-		newSize := len(metadata) + len(metadata)/2
-		if newSize < 8192 {
-			newSize = 8192
-		}
-		c.sendBuf = make([]byte, newSize)
-	}
-
-	if _, err := c.conn.Write(metadata); err != nil {
+	// Generate and send metadata message
+	msg := NewMessageShareMemory(c.version, typeShareMemoryByFilePath,
+		c.shmManager.GetQueuePath(), c.shmManager.GetBufferPath())
+	if err := c.SendMessage(msg); err != nil {
 		return err
 	}
 
 	// Wait for acknowledgment
-	if _, err := c.conn.Read(c.recvBuf[:headerSize]); err != nil {
+	var ackMsg MessageAckShareMemory
+	if err := c.recvMessage(&ackMsg); err != nil {
 		return err
 	}
 
-	var ackHeader Header
-	if err := ackHeader.Decode(c.recvBuf[:headerSize]); err != nil {
-		return err
-	}
-
-	if !ackHeader.IsValid() || ackHeader.Type != uint8(typeAckShareMemory) {
-		return fmt.Errorf("expected ack share memory, got: type=%d", ackHeader.Type)
+	if !ackMsg.IsValid() {
+		return ErrInvalid
 	}
 
 	return nil
@@ -244,6 +217,11 @@ func (c *Client) exchangeMemFDMetadata() error {
 
 // Close closes the client connection and cleans up shared memory
 func (c *Client) Close() error {
+	return c.closeWithError(nil)
+}
+
+// closeWithError closes the client connection with an optional error
+func (c *Client) closeWithError(err error) error {
 	if !c.closed.CompareAndSwap(false, true) {
 		return nil // already closed
 	}
@@ -253,102 +231,261 @@ func (c *Client) Close() error {
 
 	var lastErr error
 
+	// Use provided error or default close error
+	if err != nil {
+		lastErr = err
+	} else {
+		lastErr = net.ErrClosed
+	}
+
 	// Cleanup shared memory
 	if c.shmManager != nil {
-		if err := c.shmManager.Cleanup(); err != nil {
-			lastErr = err
+		if cleanupErr := c.shmManager.Cleanup(); cleanupErr != nil {
+			// Prioritize the original error if it exists
+			if err == nil {
+				lastErr = cleanupErr
+			}
 		}
 	}
 
 	// Close connection
-	if err := c.conn.Close(); err != nil {
-		lastErr = err
+	if closeErr := c.conn.Close(); closeErr != nil {
+		// Prioritize the original error if it exists
+		if err == nil {
+			lastErr = closeErr
+		}
 	}
 
 	return lastErr
 }
 
-// Send sends a message to the server
-func (c *Client) Send(msgType eventType, data []byte) error {
+// OpenStream creates a new stream for bidirectional communication
+func (c *Client) OpenStream() (*Stream, error) {
 	if c.closed.Load() {
-		return net.ErrClosed
+		return nil, net.ErrClosed
 	}
 
-	header := Header{
-		Length:  uint32(headerSize + len(data)),
-		Magic:   headerMagic,
-		Version: 3,
-		Type:    uint8(msgType),
+	if !c.handshakeDone {
+		return nil, errors.New("handshake not completed")
+	}
+
+	// Allocate new stream ID (odd numbers for client, increment by 2)
+	id := c.nextStreamID.Add(2) - 2
+
+	stream := newStream(c, id)
+
+	// Register stream
+	c.streamsMu.Lock()
+	c.streams[id] = stream
+	c.streamsMu.Unlock()
+
+	return stream, nil
+}
+
+// registerStream registers a stream in the client's stream map
+func (c *Client) registerStream(s *Stream) {
+	c.streamsMu.Lock()
+	c.streams[s.id] = s
+	c.streamsMu.Unlock()
+}
+
+// unregisterStream removes a stream from the client's stream map
+func (c *Client) unregisterStream(id uint32) {
+	c.streamsMu.Lock()
+	delete(c.streams, id)
+	c.streamsMu.Unlock()
+}
+
+// getStream retrieves a stream by ID
+func (c *Client) getStream(id uint32) *Stream {
+	c.streamsMu.RLock()
+	stream := c.streams[id]
+	c.streamsMu.RUnlock()
+	return stream
+}
+
+// SendMessage sends a message to the server
+func (c *Client) SendMessage(m Message) error {
+	if c.closed.Load() {
+		return net.ErrClosed
 	}
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	// Ensure send buffer is large enough, grow exponentially
-	totalSize := headerSize + len(data)
-	if len(c.sendBuf) < totalSize {
-		// Grow buffer to at least totalSize, with 50% extra capacity for future growth
-		newSize := totalSize + totalSize/2
-		if newSize < 8192 { // Minimum 8KB for growth
-			newSize = 8192
-		}
-		c.sendBuf = make([]byte, newSize)
-	}
+	// Encode message directly into send buffer, growing it as needed
+	c.sendBuf = m.Append(c.sendBuf[:0])
 
-	// Encode header
-	header.Append(c.sendBuf[:headerSize])
-
-	// Copy data
-	if len(data) > 0 {
-		copy(c.sendBuf[headerSize:], data)
-	}
-
-	_, err := c.conn.Write(c.sendBuf[:totalSize])
+	_, err := c.conn.Write(c.sendBuf)
 	return err
 }
 
-// Receive receives a message from the server
-func (c *Client) Receive() (eventType, []byte, error) {
+// recvMessage receives a message from the server and decodes it into the provided Message
+func (c *Client) recvMessage(m Message) error {
 	if c.closed.Load() {
-		return 0, nil, net.ErrClosed
+		return net.ErrClosed
 	}
 
-	// Read header
-	_, err := c.conn.Read(c.recvBuf[:headerSize])
+	// Read header first
+	headerBytes, err := c.reader.Peek(headerSize)
 	if err != nil {
-		return 0, nil, err
+		return err
 	}
 
 	var header Header
-	if err := header.Decode(c.recvBuf[:headerSize]); err != nil {
-		return 0, nil, err
+	if err := header.Decode(headerBytes); err != nil {
+		return err
 	}
 
-	// Validate magic number
 	if !header.IsValid() {
-		return 0, nil, ErrInvalidMagic
+		return ErrInvalid
 	}
 
-	// Read payload if any
-	payloadSize := int(header.Length) - headerSize
-	var payload []byte
-	if payloadSize > 0 {
-		if len(c.recvBuf) < payloadSize {
-			// Grow buffer exponentially for large payloads
-			newSize := payloadSize + payloadSize/2
-			if newSize < 8192 { // Minimum 8KB for growth
-				newSize = 8192
-			}
-			c.recvBuf = make([]byte, newSize)
-		}
-		_, err := c.conn.Read(c.recvBuf[:payloadSize])
+	// Read full message
+	messageLen := int(header.Length)
+
+	// If message fits in bufio buffer, use Peek for the whole message
+	if messageLen <= c.reader.Size() {
+		fullMessage, err := c.reader.Peek(messageLen)
 		if err != nil {
-			return 0, nil, err
+			return err
 		}
-		payload = c.recvBuf[:payloadSize]
+		// Decode message directly from peeked data
+		err = m.Decode(fullMessage)
+		if err != nil {
+			return err
+		}
+		// Discard the peeked data
+		_, err = c.reader.Discard(messageLen)
+		return err
 	}
 
-	return eventType(header.Type), payload, nil
+	// Message is larger than buffer, need to allocate and read
+	messageBytes := make([]byte, messageLen)
+	_, err = c.reader.Read(messageBytes)
+	if err != nil {
+		return err
+	}
+
+	// Decode message
+	return m.Decode(messageBytes)
+}
+
+// notifyPeer sends a notification to the peer when data is ready in the queue
+func (c *Client) notifyPeer() error {
+	queueMgr := c.shmManager.GetQueueManager()
+	sendQueue := queueMgr.GetSendQueue()
+
+	// Only send notification if peer needs to be notified
+	if !sendQueue.MarkWorking() {
+		return nil
+	}
+
+	// Send polling event to wake up peer
+	msg := NewMessagePolling(c.version)
+	return c.SendMessage(msg)
+}
+
+// recvLoop receives events from the Unix domain socket
+func (c *Client) recvLoop() {
+	var rawMsg messageRaw
+	for {
+		if c.closed.Load() {
+			return
+		}
+
+		// Receive raw message
+		if err := c.recvMessage(&rawMsg); err != nil {
+			if c.closed.Load() {
+				return
+			}
+			// Handle receive error by closing client
+			c.closeWithError(err)
+			return
+		}
+
+		switch messageType(rawMsg.Type) {
+		case typePolling:
+			// Handle typePolling event - notify queueLoop
+			select {
+			case c.queueNotifyCh <- struct{}{}:
+			default:
+				// Channel already has notification, skip
+			}
+		case typeStreamClose:
+			// Handle stream close notification
+			c.handleStreamClose(rawMsg.Data)
+		}
+	}
+}
+
+// handleStreamClose handles incoming stream close notifications
+func (c *Client) handleStreamClose(messageBytes []byte) {
+	// Decode the stream close message
+	var msg MessageStreamClose
+	if err := msg.Decode(messageBytes); err != nil {
+		// Invalid message, ignore
+		return
+	}
+
+	// Find and close the stream
+	stream := c.getStream(msg.StreamID)
+	if stream != nil {
+		// Close the stream (this will also unregister it)
+		stream.Close()
+	}
+}
+
+// queueLoop pops from queue and dispatches to streams
+func (c *Client) queueLoop() {
+	queueMgr := c.shmManager.GetQueueManager()
+	bufferMgr := c.shmManager.GetBufferManager()
+	recvQueue := queueMgr.GetRecvQueue()
+
+	// Use a ticker instead of time.After to avoid GC pressure
+	ticker := time.NewTicker(20 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		if c.closed.Load() {
+			return
+		}
+
+		// Try to pop all available elements from queue
+		for {
+			elem, err := recvQueue.Pop()
+			if err != nil {
+				// Queue is empty, break inner loop
+				break
+			}
+
+			// Find the stream for this element
+			stream := c.getStream(elem.StreamID)
+			if stream == nil {
+				// No stream for this ID, read and recycle buffer
+				slice, err := bufferMgr.ReadBufferSlice(elem.Offset)
+				if err != nil {
+					continue
+				}
+				bufferMgr.RecycleBuffer(slice)
+				continue
+			}
+
+			// Deliver element to stream
+			stream.deliverElement(elem)
+		}
+
+		// Mark not working after consuming all elements
+		recvQueue.MarkNotWorking()
+
+		// Wait for notification from recvLoop
+		select {
+		case <-c.queueNotifyCh:
+			// Got notification, continue to pop from queue
+		case <-ticker.C:
+			// Timeout, check queue again (in case notification was missed)
+		}
+	}
 }
 
 // IsClosed returns whether the client is closed

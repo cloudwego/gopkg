@@ -115,7 +115,7 @@ type BufferSlice struct {
 	data         []byte   // Data region in shared memory
 	cap          uint32   // Buffer capacity
 	start        uint32   // Data start offset (for prepend support)
-	offsetInShm  uint32   // Offset in shared memory
+	offset       uint32   // Offset in shared memory
 	readIdx      int      // Read cursor
 	writeIdx     int      // Write cursor
 	isFromShm    bool     // Whether from shared memory
@@ -124,11 +124,11 @@ type BufferSlice struct {
 
 // newBufferSlice creates a new buffer slice
 // Verified against legacy/buffer_slice.go:52-67
-func newBufferSlice(header []byte, data []byte, offsetInShm uint32, isFromShm bool) *BufferSlice {
+func newBufferSlice(header []byte, data []byte, offset uint32, isFromShm bool) *BufferSlice {
 	bs := &BufferSlice{
 		BufferHeader: header,
 		data:         data,
-		offsetInShm:  offsetInShm,
+		offset:       offset,
 		isFromShm:    isFromShm,
 	}
 
@@ -151,7 +151,7 @@ func (bs *BufferSlice) update() {
 		*(*uint32)(unsafe.Pointer(&bs.BufferHeader[bufferSizeOffset])) = uint32(bs.size())
 		*(*uint32)(unsafe.Pointer(&bs.BufferHeader[bufferDataStartOffset])) = bs.start
 		if bs.next != nil {
-			bs.linkNext(bs.next.offsetInShm)
+			bs.linkNext(bs.next.offset)
 		}
 	}
 }
@@ -177,6 +177,23 @@ func (bs *BufferSlice) size() int {
 // remain returns remaining capacity
 func (bs *BufferSlice) remain() int {
 	return int(bs.cap) - bs.writeIdx
+}
+
+// Data returns the data slice for reading/writing
+func (bs *BufferSlice) Data() []byte {
+	return bs.data[bs.start:bs.start+bs.cap]
+}
+
+// Offset returns the offset in shared memory
+func (bs *BufferSlice) Offset() uint32 {
+	return bs.offset
+}
+
+// SetLen sets the length of valid data in the buffer
+func (bs *BufferSlice) SetLen(length uint32) {
+	bs.writeIdx = int(bs.start + length)
+	// Update size in header
+	*(*uint32)(unsafe.Pointer(&bs.BufferHeader[bufferSizeOffset])) = length
 }
 
 // BufferList represents a lock-free list of buffers of the same size
@@ -231,7 +248,7 @@ func (bl *BufferList) Push(buf *BufferSlice) {
 	buf.reset()
 	for {
 		oldTail := atomic.LoadUint32(bl.tail)
-		newTail := buf.offsetInShm - bl.regionOffset
+		newTail := buf.offset - bl.regionOffset
 		if atomic.CompareAndSwapUint32(bl.tail, oldTail, newTail) {
 			BufferHeader(bl.region[oldTail : oldTail+bufferHeaderSize]).linkNext(newTail)
 			atomic.AddInt32(bl.size, 1)
