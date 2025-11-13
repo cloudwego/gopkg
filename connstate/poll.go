@@ -34,6 +34,7 @@ var (
 type poller interface {
 	wait() error
 	control(fd *fdOperator, op op) error
+	close() error
 }
 
 func createPoller() {

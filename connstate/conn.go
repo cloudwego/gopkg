@@ -22,7 +22,7 @@ import (
 	"unsafe"
 )
 
-type ConnState uint32
+type ConnState uint64
 
 const (
 	// StateOK means the connection is normal.
@@ -84,13 +84,13 @@ func ListenConnState(conn net.Conn) (ConnStater, error) {
 
 type connStater struct {
 	fd    unsafe.Pointer // *fdOperator
-	state uint32
+	state uint64         // Use uint64 for 64-bit atomic operations
 }
 
 func (c *connStater) Close() error {
 	fd := (*fdOperator)(atomic.LoadPointer(&c.fd))
 	if fd != nil && atomic.CompareAndSwapPointer(&c.fd, unsafe.Pointer(fd), nil) {
-		atomic.StoreUint32(&c.state, uint32(StateClosed))
+		atomic.StoreUint64(&c.state, uint64(StateClosed))
 		_ = poll.control(fd, opDel)
 		atomic.StorePointer(&fd.conn, nil)
 		pollcache.freeable(fd)
@@ -99,5 +99,5 @@ func (c *connStater) Close() error {
 }
 
 func (c *connStater) State() ConnState {
-	return ConnState(atomic.LoadUint32(&c.state))
+	return ConnState(atomic.LoadUint64(&c.state))
 }

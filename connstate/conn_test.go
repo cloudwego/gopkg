@@ -73,6 +73,10 @@ func (m *mockPoller) control(fd *fdOperator, op op) error {
 	return m.controlFunc(fd, op)
 }
 
+func (m *mockPoller) close() error {
+	return nil
+}
+
 type mockConn struct {
 	net.Conn
 	controlFunc func(f func(fd uintptr)) error
@@ -94,11 +98,11 @@ func (r *mockRawConn) Control(f func(fd uintptr)) error {
 }
 
 func TestListenConnState_Err(t *testing.T) {
-	// replace poll
-	pollInitOnce.Do(createPoller)
-	oldPoll := poll
+	if poll != nil {
+		_ = poll.close()
+	}
 	defer func() {
-		poll = oldPoll
+		createPoller()
 	}()
 	// test detach
 	var expectDetach bool

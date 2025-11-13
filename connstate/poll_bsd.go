@@ -43,7 +43,7 @@ func (p *kqueue) wait() error {
 			op := *(**fdOperator)(unsafe.Pointer(&ev.Udata))
 			if conn := (*connStater)(atomic.LoadPointer(&op.conn)); conn != nil {
 				if ev.Flags&(syscall.EV_EOF) != 0 {
-					atomic.CompareAndSwapUint32(&conn.state, uint32(StateOK), uint32(StateRemoteClosed))
+					atomic.CompareAndSwapUint64(&conn.state, uint64(StateOK), uint64(StateRemoteClosed))
 				}
 			}
 		}
@@ -71,6 +71,10 @@ func (p *kqueue) control(fd *fdOperator, op op) error {
 		_, err := syscall.Kevent(p.fd, evs, nil, nil)
 		return err
 	}
+}
+
+func (p *kqueue) close() error {
+	return syscall.Close(p.fd)
 }
 
 func openpoll() (p poller, err error) {
