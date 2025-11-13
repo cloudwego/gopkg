@@ -8,7 +8,8 @@ import (
 )
 
 func TestBufferHeader_Flags(t *testing.T) {
-	header := make(BufferHeader, bufferHeaderSize)
+	headerBytes := make([]byte, bufferHeaderSize)
+	header := headerFromBytes(headerBytes)
 
 	assert.False(t, header.hasNext())
 	assert.False(t, header.isInUsed())
@@ -18,28 +19,28 @@ func TestBufferHeader_Flags(t *testing.T) {
 
 	header.linkNext(100)
 	assert.True(t, header.hasNext())
-	assert.Equal(t, uint32(100), header.nextBufferOffset())
+	assert.Equal(t, uint32(100), header.getNextBufferOffset())
 
 	header.clearFlag()
 	assert.False(t, header.hasNext())
 	assert.False(t, header.isInUsed())
 }
 
-func TestNewBufferSlice(t *testing.T) {
+func TestNewBuffer(t *testing.T) {
 	header := make([]byte, bufferHeaderSize)
 	data := make([]byte, 1024)
 
 	// Test non-shm buffer
-	bs := newBufferSlice(header, data, 0, false)
+	bs := newBuffer(header, data, 0, false)
 	assert.NotNil(t, bs)
 	assert.Equal(t, uint32(1024), bs.cap)
 	assert.Equal(t, 0, bs.size())
 }
 
-func TestBufferSlice_ReadWrite(t *testing.T) {
+func TestBuffer_ReadWrite(t *testing.T) {
 	header := make([]byte, bufferHeaderSize)
 	data := make([]byte, 1024)
-	bs := newBufferSlice(header, data, 100, false)
+	bs := newBuffer(header, data, 100, false)
 
 	assert.Equal(t, 1024, bs.remain())
 
@@ -47,10 +48,10 @@ func TestBufferSlice_ReadWrite(t *testing.T) {
 	assert.Equal(t, 10, bs.size())
 }
 
-func TestBufferSlice_Reset(t *testing.T) {
+func TestBuffer_Reset(t *testing.T) {
 	header := make([]byte, bufferHeaderSize)
 	data := make([]byte, 1024)
-	bs := newBufferSlice(header, data, 0, true)
+	bs := newBuffer(header, data, 0, true)
 
 	bs.writeIdx = 100
 	bs.readIdx = 50
@@ -259,7 +260,7 @@ func TestValidateSizePercentPairs(t *testing.T) {
 	}
 }
 
-func TestBufferManager_ReadBufferSlice(t *testing.T) {
+func TestBufferManager_ReadBuffer(t *testing.T) {
 	pairs := []*SizePercentPair{{Size: 128, Percent: 100}}
 	mem := make([]byte, 64*1024)
 	bm, err := CreateBufferManager(pairs, "test", mem)
@@ -270,18 +271,18 @@ func TestBufferManager_ReadBufferSlice(t *testing.T) {
 	require.NoError(t, err)
 
 	// Read it back using offset
-	readBuf, err := bm.ReadBufferSlice(buf.Offset())
+	readBuf, err := bm.ReadBuffer(buf.Offset())
 	require.NoError(t, err)
 	assert.Equal(t, buf.Offset(), readBuf.Offset())
 }
 
-func TestBufferManager_ReadBufferSlice_Invalid(t *testing.T) {
+func TestBufferManager_ReadBuffer_Invalid(t *testing.T) {
 	pairs := []*SizePercentPair{{Size: 128, Percent: 100}}
 	mem := make([]byte, 1024)
 	bm, err := CreateBufferManager(pairs, "test", mem)
 	require.NoError(t, err)
 
 	// Try to read beyond bounds
-	_, err = bm.ReadBufferSlice(99999)
+	_, err = bm.ReadBuffer(99999)
 	assert.Error(t, err)
 }

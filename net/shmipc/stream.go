@@ -35,7 +35,7 @@ func (s *Stream) deliverElement(elem QueueElement) {
 	if s.closed.Load() {
 		// Stream closed, recycle buffer
 		bufferMgr := s.client.shmManager.GetBufferManager()
-		slice, err := bufferMgr.ReadBufferSlice(elem.Offset)
+		slice, err := bufferMgr.ReadBuffer(elem.Offset)
 		if err != nil {
 			return
 		}
@@ -50,7 +50,7 @@ func (s *Stream) deliverElement(elem QueueElement) {
 	case <-s.closeCh:
 		// Stream closed during delivery, recycle buffer
 		bufferMgr := s.client.shmManager.GetBufferManager()
-		slice, err := bufferMgr.ReadBufferSlice(elem.Offset)
+		slice, err := bufferMgr.ReadBuffer(elem.Offset)
 		if err != nil {
 			return
 		}
@@ -80,8 +80,8 @@ func (s *Stream) Read(p []byte) (n int, err error) {
 	// Wait for element from queueLoop
 	select {
 	case elem := <-s.recvCh:
-		// Read buffer slice from shared memory
-		slice, err := bufferMgr.ReadBufferSlice(elem.Offset)
+		// Read buffer from shared memory
+		slice, err := bufferMgr.ReadBuffer(elem.Offset)
 		if err != nil {
 			return 0, err
 		}
@@ -167,7 +167,7 @@ func (s *Stream) Close() error {
 	for {
 		select {
 		case elem := <-s.recvCh:
-			slice, err := bufferMgr.ReadBufferSlice(elem.Offset)
+			slice, err := bufferMgr.ReadBuffer(elem.Offset)
 			if err != nil {
 				continue
 			}

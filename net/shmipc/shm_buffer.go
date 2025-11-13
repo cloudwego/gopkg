@@ -74,69 +74,81 @@ const (
 	sliceInUsedFlag                // Buffer is currently in use
 )
 
-// BufferHeader wraps a byte slice representing a buffer header
-type BufferHeader []byte
-
-// hasNext checks if buffer has a next buffer in chain
-func (bh BufferHeader) hasNext() bool {
-	return (bh[bufferFlagOffset] & hasNextBufferFlag) > 0
+// BufferHeader represents the 20-byte buffer header in shared memory
+type BufferHeader struct {
+	cap              uint32 // Data capacity
+	size             uint32 // Current data size
+	dataStart        uint32 // Data start offset (for prepend)
+	nextBufferOffset uint32 // Next buffer offset (for free list chain and buffer linking)
+	flags            uint8  // Bit 0: hasNext, Bit 1: inUsed
+	reserved         [3]byte
 }
 
-// nextBufferOffset returns the offset to the next buffer
-func (bh BufferHeader) nextBufferOffset() uint32 {
-	return *(*uint32)(unsafe.Pointer(&bh[nextBufferOffset]))
+// headerFromBytes interprets a byte slice as a BufferHeader
+func headerFromBytes(b []byte) *BufferHeader {
+	return (*BufferHeader)(unsafe.Pointer(&b[0]))
+}
+
+// hasNext checks if buffer has a next buffer in chain
+func (bh *BufferHeader) hasNext() bool {
+	return (bh.flags & hasNextBufferFlag) > 0
+}
+
+// getNextBufferOffset returns the offset to the next buffer
+func (bh *BufferHeader) getNextBufferOffset() uint32 {
+	return bh.nextBufferOffset
 }
 
 // clearFlag clears all flags
-func (bh BufferHeader) clearFlag() {
-	bh[bufferFlagOffset] = 0
+func (bh *BufferHeader) clearFlag() {
+	bh.flags = 0
 }
 
 // setInUsed marks buffer as in use
-func (bh BufferHeader) setInUsed() {
-	bh[bufferFlagOffset] |= sliceInUsedFlag
+func (bh *BufferHeader) setInUsed() {
+	bh.flags |= sliceInUsedFlag
 }
 
 // isInUsed checks if buffer is in use
-func (bh BufferHeader) isInUsed() bool {
-	return (bh[bufferFlagOffset] & sliceInUsedFlag) > 0
+func (bh *BufferHeader) isInUsed() bool {
+	return (bh.flags & sliceInUsedFlag) > 0
 }
 
 // linkNext links this buffer to next buffer at given offset
-func (bh BufferHeader) linkNext(next uint32) {
-	*(*uint32)(unsafe.Pointer(&bh[nextBufferOffset])) = next
-	bh[bufferFlagOffset] |= hasNextBufferFlag
+func (bh *BufferHeader) linkNext(next uint32) {
+	bh.nextBufferOffset = next
+	bh.flags |= hasNextBufferFlag
 }
 
-// BufferSlice represents a single buffer slice with header and data
+// Buffer represents a single buffer with header and data
 // Verified against legacy/buffer_slice.go:34-46
-type BufferSlice struct {
-	BufferHeader          // 20-byte header in shared memory
-	data         []byte   // Data region in shared memory
-	cap          uint32   // Buffer capacity
-	start        uint32   // Data start offset (for prepend support)
-	offset       uint32   // Offset in shared memory
-	readIdx      int      // Read cursor
-	writeIdx     int      // Write cursor
-	isFromShm    bool     // Whether from shared memory
-	next         *BufferSlice
+type Buffer struct {
+	header    *BufferHeader // 20-byte header in shared memory
+	data      []byte        // Data region in shared memory
+	cap       uint32        // Buffer capacity
+	start     uint32        // Data start offset (for prepend support)
+	offset    uint32        // Offset in shared memory
+	readIdx   int           // Read cursor
+	writeIdx  int           // Write cursor
+	isFromShm bool          // Whether from shared memory
+	next      *Buffer
 }
 
-// newBufferSlice creates a new buffer slice
+// newBuffer creates a new buffer
 // Verified against legacy/buffer_slice.go:52-67
-func newBufferSlice(header []byte, data []byte, offset uint32, isFromShm bool) *BufferSlice {
-	bs := &BufferSlice{
-		BufferHeader: header,
-		data:         data,
-		offset:       offset,
-		isFromShm:    isFromShm,
+func newBuffer(header []byte, data []byte, offset uint32, isFromShm bool) *Buffer {
+	bs := &Buffer{
+		header:    headerFromBytes(header),
+		data:      data,
+		offset:    offset,
+		isFromShm: isFromShm,
 	}
 
-	if isFromShm && header != nil {
-		bs.cap = *(*uint32)(unsafe.Pointer(&header[bufferCapOffset]))
-		bs.start = *(*uint32)(unsafe.Pointer(&header[bufferDataStartOffset]))
+	if isFromShm {
+		bs.cap = bs.header.cap
+		bs.start = bs.header.dataStart
 		bs.readIdx = int(bs.start)
-		bs.writeIdx = int(bs.start + *(*uint32)(unsafe.Pointer(&header[bufferSizeOffset])))
+		bs.writeIdx = int(bs.start + bs.header.size)
 	} else {
 		bs.cap = uint32(cap(data))
 	}
@@ -146,54 +158,50 @@ func newBufferSlice(header []byte, data []byte, offset uint32, isFromShm bool) *
 
 // update writes buffer metadata back to header
 // Verified against legacy/buffer_slice.go:107-115
-func (bs *BufferSlice) update() {
-	if bs.BufferHeader != nil {
-		*(*uint32)(unsafe.Pointer(&bs.BufferHeader[bufferSizeOffset])) = uint32(bs.size())
-		*(*uint32)(unsafe.Pointer(&bs.BufferHeader[bufferDataStartOffset])) = bs.start
-		if bs.next != nil {
-			bs.linkNext(bs.next.offset)
-		}
+func (bs *Buffer) update() {
+	bs.header.size = uint32(bs.size())
+	bs.header.dataStart = bs.start
+	if bs.next != nil {
+		bs.header.linkNext(bs.next.offset)
 	}
 }
 
 // reset resets buffer to initial state
 // Verified against legacy/buffer_slice.go:117-126
-func (bs *BufferSlice) reset() {
-	if bs.BufferHeader != nil {
-		*(*uint32)(unsafe.Pointer(&bs.BufferHeader[bufferSizeOffset])) = 0
-		*(*uint32)(unsafe.Pointer(&bs.BufferHeader[bufferDataStartOffset])) = 0
-		bs.BufferHeader.clearFlag()
-	}
+func (bs *Buffer) reset() {
+	bs.header.size = 0
+	bs.header.dataStart = 0
+	bs.header.clearFlag()
 	bs.writeIdx = 0
 	bs.readIdx = 0
 	bs.next = nil
 }
 
 // size returns the current data size
-func (bs *BufferSlice) size() int {
+func (bs *Buffer) size() int {
 	return bs.writeIdx - bs.readIdx
 }
 
 // remain returns remaining capacity
-func (bs *BufferSlice) remain() int {
+func (bs *Buffer) remain() int {
 	return int(bs.cap) - bs.writeIdx
 }
 
 // Data returns the data slice for reading/writing
-func (bs *BufferSlice) Data() []byte {
+func (bs *Buffer) Data() []byte {
 	return bs.data[bs.start:bs.start+bs.cap]
 }
 
 // Offset returns the offset in shared memory
-func (bs *BufferSlice) Offset() uint32 {
+func (bs *Buffer) Offset() uint32 {
 	return bs.offset
 }
 
 // SetLen sets the length of valid data in the buffer
-func (bs *BufferSlice) SetLen(length uint32) {
+func (bs *Buffer) SetLen(length uint32) {
 	bs.writeIdx = int(bs.start + length)
 	// Update size in header
-	*(*uint32)(unsafe.Pointer(&bs.BufferHeader[bufferSizeOffset])) = length
+	bs.header.size = length
 }
 
 // BufferList represents a lock-free list of buffers of the same size
@@ -211,7 +219,7 @@ type BufferList struct {
 
 // Pop allocates a buffer from the free list (lock-free)
 // Verified against legacy/buffer_manager.go:417-448
-func (bl *BufferList) Pop() (*BufferSlice, error) {
+func (bl *BufferList) Pop() (*Buffer, error) {
 	// Pre-decrement size counter to reserve a slot
 	if atomic.AddInt32(bl.size, -1) <= 0 {
 		atomic.AddInt32(bl.size, 1)
@@ -221,15 +229,15 @@ func (bl *BufferList) Pop() (*BufferSlice, error) {
 	// Retry up to 200 times for lock-free CAS operations
 	head := atomic.LoadUint32(bl.head)
 	for i := 0; i < 200; i++ {
-		bh := BufferHeader(bl.region[head : head+bufferHeaderSize])
+		bh := headerFromBytes(bl.region[head : head+bufferHeaderSize])
 
 		// Try to move head to next buffer
-		if bh.hasNext() && atomic.CompareAndSwapUint32(bl.head, head, bh.nextBufferOffset()) {
+		if bh.hasNext() && atomic.CompareAndSwapUint32(bl.head, head, bh.getNextBufferOffset()) {
 			// Successfully claimed this buffer
 			bh.clearFlag()
 			bh.setInUsed()
 			dataStart := head + bufferHeaderSize
-			return newBufferSlice(bh, bl.region[dataStart:dataStart+*bl.capPerBuf],
+			return newBuffer(bl.region[head:head+bufferHeaderSize], bl.region[dataStart:dataStart+*bl.capPerBuf],
 				head+bl.regionOffset, true), nil
 		}
 
@@ -244,13 +252,13 @@ func (bl *BufferList) Pop() (*BufferSlice, error) {
 
 // Push returns a buffer to the free list (lock-free)
 // Verified against legacy/buffer_manager.go:450-462
-func (bl *BufferList) Push(buf *BufferSlice) {
+func (bl *BufferList) Push(buf *Buffer) {
 	buf.reset()
 	for {
 		oldTail := atomic.LoadUint32(bl.tail)
 		newTail := buf.offset - bl.regionOffset
 		if atomic.CompareAndSwapUint32(bl.tail, oldTail, newTail) {
-			BufferHeader(bl.region[oldTail : oldTail+bufferHeaderSize]).linkNext(newTail)
+			headerFromBytes(bl.region[oldTail : oldTail+bufferHeaderSize]).linkNext(newTail)
 			atomic.AddInt32(bl.size, 1)
 			return
 		}
@@ -379,7 +387,7 @@ func createBufferList(bufNum, capPerBuf uint32, mem []byte) (*BufferList, error)
 	}
 
 	// Clear flag on tail buffer
-	BufferHeader(bl.region[*bl.tail:]).clearFlag()
+	headerFromBytes(bl.region[*bl.tail:]).clearFlag()
 
 	return bl, nil
 }
@@ -506,7 +514,7 @@ func MappingBufferManager(path string, mem []byte) (*BufferManager, error) {
 
 // AllocBuffer allocates a single buffer of given size
 // Verified against legacy/buffer_manager.go:482-495
-func (b *BufferManager) AllocBuffer(size uint32) (*BufferSlice, error) {
+func (b *BufferManager) AllocBuffer(size uint32) (*Buffer, error) {
 	if size <= b.maxSliceSize {
 		for i := range b.lists {
 			if size <= *b.lists[i].capPerBuf {
@@ -523,7 +531,7 @@ func (b *BufferManager) AllocBuffer(size uint32) (*BufferSlice, error) {
 
 // RecycleBuffer returns a buffer to the appropriate free list
 // Verified against legacy/buffer_manager.go:514-528
-func (b *BufferManager) RecycleBuffer(slice *BufferSlice) {
+func (b *BufferManager) RecycleBuffer(slice *Buffer) {
 	if slice == nil {
 		return
 	}
@@ -537,9 +545,9 @@ func (b *BufferManager) RecycleBuffer(slice *BufferSlice) {
 	}
 }
 
-// ReadBufferSlice reads a buffer slice from shared memory at given offset
+// ReadBuffer reads a buffer from shared memory at given offset
 // Verified against legacy/buffer_manager.go:559-571
-func (b *BufferManager) ReadBufferSlice(offset uint32) (*BufferSlice, error) {
+func (b *BufferManager) ReadBuffer(offset uint32) (*Buffer, error) {
 	if int(offset)+bufferHeaderSize >= len(b.mem) {
 		return nil, fmt.Errorf("broken share memory. readBufferSlice unexpected offset:%d buffers cap:%d",
 			offset, len(b.mem))
@@ -549,11 +557,11 @@ func (b *BufferManager) ReadBufferSlice(offset uint32) (*BufferSlice, error) {
 	bufEndOffset := offset + uint32(bufferHeaderSize) + bufCap
 
 	if bufEndOffset > uint32(len(b.mem)) {
-		return nil, fmt.Errorf("broken share memory. readBufferSlice unexpected bufferEndOffset:%d. bufferStartOffset:%d buffers cap:%d",
+		return nil, fmt.Errorf("broken share memory. readBuffer unexpected bufferEndOffset:%d. bufferStartOffset:%d buffers cap:%d",
 			bufEndOffset, offset, len(b.mem))
 	}
 
-	return newBufferSlice(b.mem[offset:offset+bufferHeaderSize], b.mem[offset+bufferHeaderSize:bufEndOffset], offset, true), nil
+	return newBuffer(b.mem[offset:offset+bufferHeaderSize], b.mem[offset+bufferHeaderSize:bufEndOffset], offset, true), nil
 }
 
 

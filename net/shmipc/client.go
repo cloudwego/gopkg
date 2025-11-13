@@ -463,7 +463,7 @@ func (c *Client) queueLoop() {
 			stream := c.getStream(elem.StreamID)
 			if stream == nil {
 				// No stream for this ID, read and recycle buffer
-				slice, err := bufferMgr.ReadBufferSlice(elem.Offset)
+				slice, err := bufferMgr.ReadBuffer(elem.Offset)
 				if err != nil {
 					continue
 				}
