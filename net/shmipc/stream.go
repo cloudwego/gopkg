@@ -17,6 +17,10 @@ type Stream struct {
 	closed  atomic.Bool
 	recvCh  chan QueueElement
 	closeCh chan struct{}
+
+	// Partial read state
+	currentBuf    *Buffer // Current buffer being read
+	currentOffset int     // Offset within current buffer's data
 }
 
 // newStream creates a new stream with the given ID
@@ -35,11 +39,11 @@ func (s *Stream) deliverElement(elem QueueElement) {
 	if s.closed.Load() {
 		// Stream closed, recycle buffer
 		bufferMgr := s.client.shmManager.GetBufferManager()
-		slice, err := bufferMgr.ReadBuffer(elem.Offset)
+		buf, err := bufferMgr.ReadBuffer(elem.Offset)
 		if err != nil {
 			return
 		}
-		bufferMgr.RecycleBuffer(slice)
+		recycleBufferChain(bufferMgr, buf)
 		return
 	}
 
@@ -50,11 +54,11 @@ func (s *Stream) deliverElement(elem QueueElement) {
 	case <-s.closeCh:
 		// Stream closed during delivery, recycle buffer
 		bufferMgr := s.client.shmManager.GetBufferManager()
-		slice, err := bufferMgr.ReadBuffer(elem.Offset)
+		buf, err := bufferMgr.ReadBuffer(elem.Offset)
 		if err != nil {
 			return
 		}
-		bufferMgr.RecycleBuffer(slice)
+		recycleBufferChain(bufferMgr, buf)
 	default:
 		// Channel full, this shouldn't happen with proper flow control
 		// TODO: handle backpressure
@@ -66,75 +70,82 @@ func (s *Stream) Read(p []byte) (n int, err error) {
 	if s.closed.Load() {
 		return 0, ErrStreamClosed
 	}
-
-	if s.client.closed.Load() {
-		return 0, net.ErrClosed
-	}
-
-	if !s.client.handshakeDone {
-		return 0, errors.New("handshake not completed")
-	}
-
 	bufferMgr := s.client.shmManager.GetBufferManager()
+
+	// If we have a current buffer from a previous partial read, continue from there
+	if s.currentBuf != nil {
+		return s.readFromCurrentBuffer(p, bufferMgr)
+	}
 
 	// Wait for element from queueLoop
 	select {
 	case elem := <-s.recvCh:
-		// Read buffer from shared memory
-		slice, err := bufferMgr.ReadBuffer(elem.Offset)
+		// Read buffer from shared memory (returns head of linked list)
+		buf, err := bufferMgr.ReadBuffer(elem.Offset)
 		if err != nil {
 			return 0, err
 		}
 
-		// Copy data to p
-		data := slice.Data()
-		n = copy(p, data)
-
-		// Release buffer
-		bufferMgr.RecycleBuffer(slice)
-
-		return n, nil
+		s.currentBuf = buf
+		s.currentOffset = 0
+		return s.readFromCurrentBuffer(p, bufferMgr)
 	case <-s.closeCh:
 		return 0, ErrStreamClosed
 	}
 }
 
+// readFromCurrentBuffer reads data from the current buffer chain
+func (s *Stream) readFromCurrentBuffer(p []byte, bufferMgr *BufferManager) (int, error) {
+	copied := 0
+	for s.currentBuf != nil && copied < len(p) {
+		// Copy from current position to end of valid data
+		data := s.currentBuf.Data()
+		n := copy(p[copied:], data[s.currentOffset:])
+		copied += n
+		s.currentOffset += n
+
+		// If we've consumed all data in this buffer, move to next
+		if s.currentOffset >= len(data) {
+			next := s.currentBuf.next
+			bufferMgr.RecycleBuffer(s.currentBuf)
+			s.currentBuf = next
+			s.currentOffset = 0
+		}
+	}
+	return copied, nil
+}
+
 // Write writes data to the stream's send queue
+// For large data, it allocates multiple buffers and chains them
 func (s *Stream) Write(p []byte) (n int, err error) {
 	if s.closed.Load() {
 		return 0, ErrStreamClosed
 	}
-
 	if s.client.closed.Load() {
 		return 0, net.ErrClosed
 	}
-
-	if !s.client.handshakeDone {
-		return 0, errors.New("handshake not completed")
+	if len(p) == 0 {
+		return 0, nil
 	}
 
 	queueMgr := s.client.shmManager.GetQueueManager()
 	bufferMgr := s.client.shmManager.GetBufferManager()
 
-	// Allocate buffer
-	slice, err := bufferMgr.AllocBuffer(uint32(len(p)))
+	// Allocate buffer chain and copy data
+	head, err := allocBufferChain(bufferMgr, p)
 	if err != nil {
 		return 0, err
 	}
 
-	// Copy data to buffer
-	copy(slice.Data(), p)
-	slice.SetLen(uint32(len(p)))
-
-	// Push element to send queue with stream ID
+	// Push element to send queue with stream ID (only head offset)
 	elem := QueueElement{
 		StreamID: s.id,
-		Offset:   slice.Offset(),
+		Offset:   head.Offset(),
 		Status:   0, // TODO: proper status management
 	}
 
 	if err := queueMgr.GetSendQueue().Put(elem); err != nil {
-		bufferMgr.RecycleBuffer(slice)
+		recycleBufferChain(bufferMgr, head)
 		return 0, err
 	}
 
@@ -156,22 +167,30 @@ func (s *Stream) Close() error {
 	s.sendCloseNotification()
 
 	// Unregister from client first - prevents new deliverElement calls
-	s.client.unregisterStream(s.id)
+	s.client.unregisterStream(s)
 
 	// Close closeCh to signal to any in-flight deliverElement and Read calls
 	close(s.closeCh)
 
+	bufferMgr := s.client.shmManager.GetBufferManager()
+
+	// Clean up current buffer chain from partial reads
+	if s.currentBuf != nil {
+		recycleBufferChain(bufferMgr, s.currentBuf)
+		s.currentBuf = nil
+		s.currentOffset = 0
+	}
+
 	// Drain and recycle any remaining elements
 	// Note: We don't close recvCh to avoid panic if deliverElement is still executing
-	bufferMgr := s.client.shmManager.GetBufferManager()
 	for {
 		select {
 		case elem := <-s.recvCh:
-			slice, err := bufferMgr.ReadBuffer(elem.Offset)
+			buf, err := bufferMgr.ReadBuffer(elem.Offset)
 			if err != nil {
 				continue
 			}
-			bufferMgr.RecycleBuffer(slice)
+			recycleBufferChain(bufferMgr, buf)
 		default:
 			// Channel drained, let it be garbage collected
 			return nil
@@ -195,5 +214,5 @@ func (s *Stream) sendCloseNotification() {
 	msg := NewMessageStreamClose(s.client.version, s.id)
 
 	// Send message to peer (ignore errors as we're closing anyway)
-	s.client.SendMessage(msg)
+	s.client.sendMessage(msg)
 }

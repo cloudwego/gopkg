@@ -59,12 +59,12 @@ type QueueElement struct {
 
 // Queue represents a lock-free ring buffer queue for producer-consumer pattern
 type Queue struct {
-	mu                 sync.Mutex
-	head               *int64  // Consumer write, producer read
-	tail               *int64  // Producer write, consumer read
-	workingFlag        *uint32 // 1 when peer is consuming, 0 otherwise
-	cap                int64
-	queueBytesOnMemory []byte // Shared memory or process memory
+	mu          sync.Mutex
+	head        *int64  // Consumer write, producer read
+	tail        *int64  // Producer write, consumer read
+	workingFlag *uint32 // 1 when peer is consuming, 0 otherwise
+	cap         int64
+	mem         []byte // Shared memory or process memory
 }
 
 // QueueManager manages send and receive queues in shared memory
@@ -90,7 +90,7 @@ func mappingQueue(mem []byte) *Queue {
 
 	queueStartOffset := queueHeaderLength
 	queueEndOffset := queueHeaderLength + int(queueCap)*queueElementLen
-	q.queueBytesOnMemory = mem[queueStartOffset:queueEndOffset]
+	q.mem = mem[queueStartOffset:queueEndOffset]
 
 	if IsARM {
 		// ARM: cap(4) + workingFlag(4) + head(8) + tail(8)
@@ -138,7 +138,7 @@ func (q *Queue) Put(e QueueElement) error {
 	queueOffset := int((tail % q.cap) * queueElementLen)
 
 	// Write element struct directly (native endian)
-	*(*QueueElement)(unsafe.Pointer(&q.queueBytesOnMemory[queueOffset])) = e
+	*(*QueueElement)(unsafe.Pointer(&q.mem[queueOffset])) = e
 
 	atomic.AddInt64(q.tail, 1)
 
@@ -157,7 +157,7 @@ func (q *Queue) Pop() (QueueElement, error) {
 	queueOffset := int((head % q.cap) * queueElementLen)
 
 	// Read element struct directly (native endian)
-	e := *(*QueueElement)(unsafe.Pointer(&q.queueBytesOnMemory[queueOffset]))
+	e := *(*QueueElement)(unsafe.Pointer(&q.mem[queueOffset]))
 
 	atomic.AddInt64(q.head, 1)
 
@@ -187,9 +187,6 @@ func (q *Queue) MarkWorking() bool {
 // MarkNotWorking clears the working flag, or sets to 1 if queue not empty
 func (q *Queue) MarkNotWorking() {
 	atomic.StoreUint32(q.workingFlag, 0)
-	if !q.IsEmpty() {
-		atomic.StoreUint32(q.workingFlag, 1)
-	}
 }
 
 // ConsumerIsWorking returns whether consumer is working

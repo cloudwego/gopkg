@@ -98,22 +98,15 @@ func dialUnixSocket(ctx context.Context, path string) (net.Conn, error) {
 
 // handshake performs protocol version negotiation and shared memory setup
 func (c *Client) handshake(ctx context.Context) error {
-	// Validate client version
 	if c.version < MinSupportedVersion || c.version > MaxSupportedVersion {
 		return ErrUnsupportedVersion
 	}
-
-	// Step 1: Version negotiation
 	if err := c.negotiateVersion(); err != nil {
 		return err
 	}
-
-	// Step 2: Initialize shared memory manager based on negotiated version
 	if err := c.initializeSharedMemory(); err != nil {
 		return err
 	}
-
-	// Step 3: Exchange shared memory metadata
 	if err := c.exchangeSharedMemoryMetadata(); err != nil {
 		return err
 	}
@@ -126,7 +119,7 @@ func (c *Client) handshake(ctx context.Context) error {
 func (c *Client) negotiateVersion() error {
 	// Send version message
 	msg := NewMessageExchangeProtoVersion(c.version)
-	if err := c.SendMessage(msg); err != nil {
+	if err := c.sendMessage(msg); err != nil {
 		return err
 	}
 
@@ -156,7 +149,6 @@ func (c *Client) negotiateVersion() error {
 
 // initializeSharedMemory creates the appropriate shared memory manager
 func (c *Client) initializeSharedMemory() error {
-	// For version 3, default to MemFD if available, otherwise fallback to file
 	c.shmManager = NewMemFDBasedShmManager()
 	if err := c.shmManager.Initialize(); err != nil {
 		// Fallback to file-based if MemFD fails
@@ -179,7 +171,7 @@ func (c *Client) exchangeFilePathMetadata() error {
 	// Generate and send metadata message
 	msg := NewMessageShareMemory(c.version, typeShareMemoryByFilePath,
 		c.shmManager.GetQueuePath(), c.shmManager.GetBufferPath())
-	if err := c.SendMessage(msg); err != nil {
+	if err := c.sendMessage(msg); err != nil {
 		return err
 	}
 
@@ -264,22 +256,13 @@ func (c *Client) OpenStream() (*Stream, error) {
 	if c.closed.Load() {
 		return nil, net.ErrClosed
 	}
-
 	if !c.handshakeDone {
 		return nil, errors.New("handshake not completed")
 	}
-
 	// Allocate new stream ID (odd numbers for client, increment by 2)
-	id := c.nextStreamID.Add(2) - 2
-
-	stream := newStream(c, id)
-
-	// Register stream
-	c.streamsMu.Lock()
-	c.streams[id] = stream
-	c.streamsMu.Unlock()
-
-	return stream, nil
+	s := newStream(c, c.nextStreamID.Add(2)-2)
+	c.registerStream(s)
+	return s, nil
 }
 
 // registerStream registers a stream in the client's stream map
@@ -290,9 +273,9 @@ func (c *Client) registerStream(s *Stream) {
 }
 
 // unregisterStream removes a stream from the client's stream map
-func (c *Client) unregisterStream(id uint32) {
+func (c *Client) unregisterStream(s *Stream) {
 	c.streamsMu.Lock()
-	delete(c.streams, id)
+	delete(c.streams, s.id)
 	c.streamsMu.Unlock()
 }
 
@@ -304,8 +287,8 @@ func (c *Client) getStream(id uint32) *Stream {
 	return stream
 }
 
-// SendMessage sends a message to the server
-func (c *Client) SendMessage(m Message) error {
+// sendMessage sends a message to the server
+func (c *Client) sendMessage(m Message) error {
 	if c.closed.Load() {
 		return net.ErrClosed
 	}
@@ -383,7 +366,7 @@ func (c *Client) notifyPeer() error {
 
 	// Send polling event to wake up peer
 	msg := NewMessagePolling(c.version)
-	return c.SendMessage(msg)
+	return c.sendMessage(msg)
 }
 
 // recvLoop receives events from the Unix domain socket
@@ -442,8 +425,7 @@ func (c *Client) queueLoop() {
 	bufferMgr := c.shmManager.GetBufferManager()
 	recvQueue := queueMgr.GetRecvQueue()
 
-	// Use a ticker instead of time.After to avoid GC pressure
-	ticker := time.NewTicker(20 * time.Millisecond)
+	ticker := time.NewTicker(10 * time.Millisecond)
 	defer ticker.Stop()
 
 	for {
