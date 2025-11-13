@@ -1,4 +1,4 @@
-package shmipc
+package protocol
 
 import (
 	"testing"
@@ -8,7 +8,7 @@ import (
 )
 
 func TestMessageShareMemory_Encode_Decode(t *testing.T) {
-	msg := NewMessageShareMemory(3, typeShareMemoryByFilePath, "/dev/shm/queue", "/dev/shm/buffer")
+	msg := NewMessageShareMemory(3, TypeShareMemoryByFilePath, "/dev/shm/queue", "/dev/shm/buffer")
 
 	buf := msg.Append(nil)
 	assert.NotEmpty(t, buf)
@@ -53,13 +53,13 @@ func TestMessagePolling(t *testing.T) {
 func TestMessageAckShareMemory(t *testing.T) {
 	msg := NewMessageAckShareMemory(3)
 	assert.True(t, msg.IsValid())
-	assert.Equal(t, uint8(typeAckShareMemory), msg.Type)
+	assert.Equal(t, uint8(TypeAckShareMemory), msg.Type)
 }
 
 func TestMessageExchangeProtoVersion(t *testing.T) {
 	msg := NewMessageExchangeProtoVersion(3)
 	assert.True(t, msg.IsValid())
-	assert.Equal(t, uint8(typeExchangeProtoVersion), msg.Type)
+	assert.Equal(t, uint8(TypeExchangeProtoVersion), msg.Type)
 }
 
 func TestMessageFallbackData_Encode_Decode(t *testing.T) {
@@ -120,14 +120,14 @@ func TestMessageHotRestartAck_Encode_Decode(t *testing.T) {
 func TestMessageRaw_Decode(t *testing.T) {
 	// Create a valid header message
 	header := &Header{
-		Length:  uint32(headerSize),
-		Magic:   headerMagic,
+		Length:  uint32(HeaderSize),
+		Magic:   HeaderMagic,
 		Version: 3,
-		Type:    uint8(typePolling),
+		Type:    uint8(TypePolling),
 	}
 	buf := header.Append(nil)
 
-	var raw messageRaw
+	var raw RawMessage
 	err := raw.Decode(buf)
 	require.NoError(t, err)
 	assert.Equal(t, header.Magic, raw.Magic)

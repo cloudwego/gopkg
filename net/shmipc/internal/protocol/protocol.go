@@ -1,4 +1,4 @@
-package shmipc
+package protocol
 
 import (
 	"encoding/binary"
@@ -6,30 +6,28 @@ import (
 )
 
 const (
-	headerMagic = 0x7758
-	headerSize  = 4 + 2 + 1 + 1 // len(4) + magic(2) + version(1) + type(1)
+	HeaderMagic = 0x7758
+	HeaderSize  = 4 + 2 + 1 + 1 // len(4) + magic(2) + version(1) + type(1)
 )
 
 var (
 	ErrBufferTooShort = errors.New("buffer too short")
 )
 
-type messageType uint8
+type MessageType uint8
 
 const (
-	// typeShareMemoryByFilePath is deprecated but kept for fallback compatibility
-	typeShareMemoryByFilePath messageType = 0
-	typePolling               messageType = 1
-	typeStreamClose           messageType = 2
-	// typePing // TODO
-	typeFallbackData         messageType = 3
-	typeExchangeProtoVersion messageType = 4
-	// typeShareMemoryByMemfd is the primary method for version 3
-	typeShareMemoryByMemfd messageType = 5
-	typeAckShareMemory     messageType = 6
-	typeAckReadyRecvFD     messageType = 7
-	typeHotRestart         messageType = 8
-	typeHotRestartAck      messageType = 9
+	// TypeShareMemoryByFilePath is deprecated but kept for fallback compatibility
+	TypeShareMemoryByFilePath MessageType = 0
+	TypePolling               MessageType = 1
+	TypeStreamClose           MessageType = 2
+	TypeFallbackData          MessageType = 3
+	TypeExchangeProtoVersion  MessageType = 4
+	TypeShareMemoryByMemfd    MessageType = 5 // >= version 3
+	TypeAckShareMemory        MessageType = 6
+	TypeAckReadyRecvFD        MessageType = 7
+	TypeHotRestart            MessageType = 8
+	TypeHotRestartAck         MessageType = 9
 )
 
 // Header represents the shared memory IPC packet header
@@ -52,7 +50,7 @@ func (h *Header) Append(buf []byte) []byte {
 
 // Decode decodes the header from bytes using big endian
 func (h *Header) Decode(data []byte) error {
-	if len(data) < headerSize {
+	if len(data) < HeaderSize {
 		return ErrBufferTooShort
 	}
 	h.Length = binary.BigEndian.Uint32(data[0:4])
@@ -64,7 +62,7 @@ func (h *Header) Decode(data []byte) error {
 
 // IsValid checks if the header has a valid magic number
 func (h *Header) IsValid() bool {
-	return h.Magic == headerMagic
+	return h.Magic == HeaderMagic
 }
 
 // appendStr appends a string to the buffer with length prefix using big endian

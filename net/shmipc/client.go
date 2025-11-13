@@ -5,10 +5,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/cloudwego/gopkg/net/shmipc/internal/protocol"
 )
 
 var (
@@ -118,13 +121,13 @@ func (c *Client) handshake(ctx context.Context) error {
 // negotiateVersion handles the protocol version exchange
 func (c *Client) negotiateVersion() error {
 	// Send version message
-	msg := NewMessageExchangeProtoVersion(c.version)
+	msg := protocol.NewMessageExchangeProtoVersion(c.version)
 	if err := c.sendMessage(msg); err != nil {
 		return err
 	}
 
 	// Receive server version response
-	var responseMsg MessageExchangeProtoVersion
+	var responseMsg protocol.MessageExchangeProtoVersion
 	if err := c.recvMessage(&responseMsg); err != nil {
 		return err
 	}
@@ -169,14 +172,14 @@ func (c *Client) exchangeSharedMemoryMetadata() error {
 // exchangeFilePathMetadata handles file-based shared memory metadata exchange
 func (c *Client) exchangeFilePathMetadata() error {
 	// Generate and send metadata message
-	msg := NewMessageShareMemory(c.version, typeShareMemoryByFilePath,
+	msg := protocol.NewMessageShareMemory(c.version, protocol.TypeShareMemoryByFilePath,
 		c.shmManager.GetQueuePath(), c.shmManager.GetBufferPath())
 	if err := c.sendMessage(msg); err != nil {
 		return err
 	}
 
 	// Wait for acknowledgment
-	var ackMsg MessageAckShareMemory
+	var ackMsg protocol.MessageAckShareMemory
 	if err := c.recvMessage(&ackMsg); err != nil {
 		return err
 	}
@@ -288,7 +291,7 @@ func (c *Client) getStream(id uint32) *Stream {
 }
 
 // sendMessage sends a message to the server
-func (c *Client) sendMessage(m Message) error {
+func (c *Client) sendMessage(m protocol.Message) error {
 	if c.closed.Load() {
 		return net.ErrClosed
 	}
@@ -303,19 +306,19 @@ func (c *Client) sendMessage(m Message) error {
 	return err
 }
 
-// recvMessage receives a message from the server and decodes it into the provided Message
-func (c *Client) recvMessage(m Message) error {
+// recvMessage receives a message from the server and decodes it into the provided protocol.Message
+func (c *Client) recvMessage(m protocol.Message) error {
 	if c.closed.Load() {
 		return net.ErrClosed
 	}
 
 	// Read header first
-	headerBytes, err := c.reader.Peek(headerSize)
+	headerBytes, err := c.reader.Peek(protocol.HeaderSize)
 	if err != nil {
 		return err
 	}
 
-	var header Header
+	var header protocol.Header
 	if err := header.Decode(headerBytes); err != nil {
 		return err
 	}
@@ -343,7 +346,22 @@ func (c *Client) recvMessage(m Message) error {
 		return err
 	}
 
-	// Message is larger than buffer, need to allocate and read
+	// Optimize for *protocol.RawMessage
+	rm, ok := m.(*protocol.RawMessage)
+	if ok {
+		rm.Header = header
+		if cap(rm.Data) >= messageLen {
+			rm.Data = rm.Data[:messageLen]
+		} else {
+			rm.Data = make([]byte, messageLen)
+		}
+		_, err := io.ReadFull(c.reader, rm.Data)
+		if err != nil {
+			return err
+		}
+	}
+
+	// protocol.Message is larger than buffer, need to allocate and read
 	messageBytes := make([]byte, messageLen)
 	_, err = c.reader.Read(messageBytes)
 	if err != nil {
@@ -365,13 +383,13 @@ func (c *Client) notifyPeer() error {
 	}
 
 	// Send polling event to wake up peer
-	msg := NewMessagePolling(c.version)
+	msg := protocol.NewMessagePolling(c.version)
 	return c.sendMessage(msg)
 }
 
 // recvLoop receives events from the Unix domain socket
 func (c *Client) recvLoop() {
-	var rawMsg messageRaw
+	var rawMsg protocol.RawMessage
 	for {
 		if c.closed.Load() {
 			return
@@ -387,17 +405,22 @@ func (c *Client) recvLoop() {
 			return
 		}
 
-		switch messageType(rawMsg.Type) {
-		case typePolling:
-			// Handle typePolling event - notify queueLoop
+		switch protocol.MessageType(rawMsg.Type) {
+		case protocol.TypePolling:
+			// Handle protocol.TypePolling event - notify queueLoop
 			select {
 			case c.queueNotifyCh <- struct{}{}:
 			default:
 				// Channel already has notification, skip
 			}
-		case typeStreamClose:
+
+		case protocol.TypeStreamClose:
 			// Handle stream close notification
 			c.handleStreamClose(rawMsg.Data)
+
+		case protocol.TypeFallbackData:
+			rawMsg.Data[protocol.HeaderSize:]
+
 		}
 	}
 }
@@ -405,7 +428,7 @@ func (c *Client) recvLoop() {
 // handleStreamClose handles incoming stream close notifications
 func (c *Client) handleStreamClose(messageBytes []byte) {
 	// Decode the stream close message
-	var msg MessageStreamClose
+	var msg protocol.MessageStreamClose
 	if err := msg.Decode(messageBytes); err != nil {
 		// Invalid message, ignore
 		return

@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/cloudwego/gopkg/net/shmipc/internal/protocol"
 	"golang.org/x/sys/unix"
 )
 
@@ -396,19 +397,19 @@ func (m *MemFDBasedShmManager) SendMetadataAndFDs(conn net.Conn, version uint8) 
 		return ErrShmNotInitialized
 	}
 
-	msg := NewMessageShareMemory(version, typeShareMemoryByMemfd, m.queueName, m.bufferName)
+	msg := protocol.NewMessageShareMemory(version, protocol.TypeShareMemoryByMemfd, m.queueName, m.bufferName)
 	metadata := msg.Append(nil)
 
 	if _, err := conn.Write(metadata); err != nil {
 		return fmt.Errorf("failed to send metadata: %w", err)
 	}
 
-	headerBuf := make([]byte, headerSize)
+	headerBuf := make([]byte, protocol.HeaderSize)
 	if _, err := conn.Read(headerBuf); err != nil {
 		return fmt.Errorf("failed to read ack: %w", err)
 	}
 
-	var header Header
+	var header protocol.Header
 	if err := header.Decode(headerBuf); err != nil {
 		return fmt.Errorf("failed to decode ack header: %w", err)
 	}

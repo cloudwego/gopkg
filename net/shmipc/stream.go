@@ -4,6 +4,8 @@ import (
 	"errors"
 	"net"
 	"sync/atomic"
+
+	"github.com/cloudwego/gopkg/net/shmipc/internal/protocol"
 )
 
 var (
@@ -211,7 +213,7 @@ func (s *Stream) IsClosed() bool {
 // sendCloseNotification sends a stream close notification to the peer
 func (s *Stream) sendCloseNotification() {
 	// Create stream close message
-	msg := NewMessageStreamClose(s.client.version, s.id)
+	msg := protocol.NewMessageStreamClose(s.client.version, s.id)
 
 	// Send message to peer (ignore errors as we're closing anyway)
 	s.client.sendMessage(msg)

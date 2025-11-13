@@ -1,4 +1,4 @@
-package shmipc
+package protocol
 
 import (
 	"testing"
@@ -10,13 +10,13 @@ import (
 func TestHeader_Encode_Decode(t *testing.T) {
 	h := &Header{
 		Length:  100,
-		Magic:   headerMagic,
+		Magic:   HeaderMagic,
 		Version: 3,
-		Type:    uint8(typePolling),
+		Type:    uint8(TypePolling),
 	}
 
 	buf := h.Append(nil)
-	assert.Len(t, buf, headerSize)
+	assert.Len(t, buf, HeaderSize)
 
 	var decoded Header
 	err := decoded.Decode(buf)
@@ -33,7 +33,7 @@ func TestHeader_IsValid(t *testing.T) {
 		magic uint16
 		valid bool
 	}{
-		{"valid magic", headerMagic, true},
+		{"valid magic", HeaderMagic, true},
 		{"invalid magic", 0x0000, false},
 	}
 

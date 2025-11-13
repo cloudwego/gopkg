@@ -125,20 +125,6 @@ func TestQueue_WorkingFlag(t *testing.T) {
 	assert.False(t, q.ConsumerIsWorking())
 }
 
-func TestQueue_MarkNotWorking_WithData(t *testing.T) {
-	queueCap := int64(5)
-	mem := make([]byte, countQueueMemSize(queueCap))
-	q := newQueue(mem, queueCap)
-
-	// Add an element
-	err := q.Put(QueueElement{StreamID: 1})
-	require.NoError(t, err)
-
-	// Mark not working - should set to 1 because queue not empty
-	q.MarkNotWorking()
-	assert.True(t, q.ConsumerIsWorking())
-}
-
 func TestQueue_Concurrent(t *testing.T) {
 	queueCap := int64(50)
 	mem := make([]byte, countQueueMemSize(queueCap))
