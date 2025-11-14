@@ -30,10 +30,6 @@ func (m *mockWindowsPoller) control(fd *fdOperator, op op) error {
 	return errNotSupportedForWindows
 }
 
-func (p *mockWindowsPoller) close() error {
-	return nil
-}
-
 func openpoll() (p poller, err error) {
 	return &mockWindowsPoller{}, nil
 }

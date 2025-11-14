@@ -27,40 +27,6 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestListenConnState(t *testing.T) {
-	ln, err := net.Listen("tcp", "localhost:0")
-	if err != nil {
-		panic(err)
-	}
-	go func() {
-		for {
-			conn, err := ln.Accept()
-			assert.Nil(t, err)
-			go func(conn net.Conn) {
-				buf := make([]byte, 11)
-				_, err := conn.Read(buf)
-				assert.Nil(t, err)
-				conn.Close()
-			}(conn)
-		}
-	}()
-	conn, err := net.Dial("tcp", ln.Addr().String())
-	assert.Nil(t, err)
-	stater, err := ListenConnState(conn)
-	assert.Nil(t, err)
-	assert.Equal(t, StateOK, stater.State())
-	_, err = conn.Write([]byte("hello world"))
-	assert.Nil(t, err)
-	buf := make([]byte, 1)
-	_, err = conn.Read(buf)
-	assert.Equal(t, io.EOF, err)
-	time.Sleep(10 * time.Millisecond)
-	assert.Equal(t, StateRemoteClosed, stater.State())
-	assert.Nil(t, stater.Close())
-	assert.Nil(t, conn.Close())
-	assert.Equal(t, StateClosed, stater.State())
-}
-
 type mockPoller struct {
 	controlFunc func(fd *fdOperator, op op) error
 }
@@ -71,10 +37,6 @@ func (m *mockPoller) wait() error {
 
 func (m *mockPoller) control(fd *fdOperator, op op) error {
 	return m.controlFunc(fd, op)
-}
-
-func (m *mockPoller) close() error {
-	return nil
 }
 
 type mockConn struct {
@@ -98,9 +60,7 @@ func (r *mockRawConn) Control(f func(fd uintptr)) error {
 }
 
 func TestListenConnState_Err(t *testing.T) {
-	if poll != nil {
-		_ = poll.close()
-	}
+	pollInitOnce.Do(func() {})
 	defer func() {
 		createPoller()
 	}()
@@ -162,6 +122,40 @@ func TestListenConnState_Err(t *testing.T) {
 			assert.Equal(t, c.expectErr, err)
 		})
 	}
+}
+
+func TestListenConnState(t *testing.T) {
+	ln, err := net.Listen("tcp", "localhost:0")
+	if err != nil {
+		panic(err)
+	}
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			assert.Nil(t, err)
+			go func(conn net.Conn) {
+				buf := make([]byte, 11)
+				_, err := conn.Read(buf)
+				assert.Nil(t, err)
+				conn.Close()
+			}(conn)
+		}
+	}()
+	conn, err := net.Dial("tcp", ln.Addr().String())
+	assert.Nil(t, err)
+	stater, err := ListenConnState(conn)
+	assert.Nil(t, err)
+	assert.Equal(t, StateOK, stater.State())
+	_, err = conn.Write([]byte("hello world"))
+	assert.Nil(t, err)
+	buf := make([]byte, 1)
+	_, err = conn.Read(buf)
+	assert.Equal(t, io.EOF, err)
+	time.Sleep(10 * time.Millisecond)
+	assert.Equal(t, StateRemoteClosed, stater.State())
+	assert.Nil(t, stater.Close())
+	assert.Nil(t, conn.Close())
+	assert.Equal(t, StateClosed, stater.State())
 }
 
 func BenchmarkListenConnState(b *testing.B) {

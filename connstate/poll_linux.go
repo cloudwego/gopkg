@@ -58,10 +58,6 @@ func (p *epoller) control(fd *fdOperator, op op) error {
 	}
 }
 
-func (p *epoller) close() error {
-	return syscall.Close(p.epfd)
-}
-
 func openpoll() (p poller, err error) {
 	var epfd int
 	epfd, err = syscall.EpollCreate(1)

@@ -73,10 +73,6 @@ func (p *kqueue) control(fd *fdOperator, op op) error {
 	}
 }
 
-func (p *kqueue) close() error {
-	return syscall.Close(p.fd)
-}
-
 func openpoll() (p poller, err error) {
 	fd, err := syscall.Kqueue()
 	if err != nil {
