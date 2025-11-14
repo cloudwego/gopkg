@@ -482,6 +482,14 @@ func TestNocopyWrite(t *testing.T) {
 	require.Equal(t, expectb, w.Bytes())
 }
 
+func TestSetSpanCache(t *testing.T) {
+	// initial status
+	require.Nil(t, spanCache)
+	// enable and init span cache
+	SetSpanCache(true)
+	require.NotNil(t, spanCache)
+}
+
 func BenchmarkWriteString(b *testing.B) {
 	smallstr := "helloworld"
 	buf := make([]byte, 4+len(smallstr))
