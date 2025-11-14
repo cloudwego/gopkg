@@ -23,17 +23,25 @@ import (
 	"unsafe"
 
 	"github.com/bytedance/gopkg/lang/span"
+
 	"github.com/cloudwego/gopkg/unsafex"
 )
 
+type spanCacheImpl interface {
+	Copy(buf []byte) []byte
+}
+
 var (
-	spanCache            = span.NewSpanCache(1024 * 1024)
-	spanCacheEnable bool = false
+	spanCache       spanCacheImpl // span.NewSpanCache does not return exported Type
+	spanCacheEnable = false
 )
 
 // SetSpanCache enable/disable binary protocol bytes/string allocator
 func SetSpanCache(enable bool) {
 	spanCacheEnable = enable
+	if enable && spanCache == nil {
+		spanCache = span.NewSpanCache(1024 * 1024)
+	}
 }
 
 var Binary BinaryProtocol
