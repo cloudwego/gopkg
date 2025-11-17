@@ -121,8 +121,9 @@ func (BinaryProtocol) WriteDouble(buf []byte, v float64) int {
 }
 
 func (BinaryProtocol) WriteBinary(buf, v []byte) int {
-	binary.BigEndian.PutUint32(buf, uint32(len(v)))
-	return 4 + copy(buf[4:], v)
+	n := copy(buf[4:], v)
+	binary.BigEndian.PutUint32(buf, uint32(n))
+	return 4 + n
 }
 
 func (p BinaryProtocol) WriteBinaryNocopy(buf []byte, w NocopyWriter, v []byte) int {
@@ -135,8 +136,9 @@ func (p BinaryProtocol) WriteBinaryNocopy(buf []byte, w NocopyWriter, v []byte) 
 }
 
 func (BinaryProtocol) WriteString(buf []byte, v string) int {
-	binary.BigEndian.PutUint32(buf, uint32(len(v)))
-	return 4 + copy(buf[4:], v)
+	n := copy(buf[4:], v)
+	binary.BigEndian.PutUint32(buf, uint32(n))
+	return 4 + n
 }
 
 func (p BinaryProtocol) WriteStringNocopy(buf []byte, w NocopyWriter, v string) int {
