@@ -35,7 +35,7 @@ func (p *kqueue) wait() error {
 	var err error
 	for {
 		// timeout=0 must be set to avoid getting stuck in a blocking syscall,
-		// which could cause a P to fail to be released in a timely manner.
+		// which could occupy a P until runtime.sysmon thread handoff it.
 		n, err = syscall.Kevent(p.fd, nil, events, timeout)
 		if err != nil && err != syscall.EINTR {
 			// exit gracefully
