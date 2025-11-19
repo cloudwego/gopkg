@@ -63,7 +63,7 @@ func TestDefaultReader(t *testing.T) {
 			dataSize: 1024,
 			handle: func(reader Reader) {
 				buf, err := reader.Next(1025)
-				if err != io.EOF {
+				if err != io.EOF && err != errNoRemainingData {
 					t.Fatal("err is not io.EOF", err)
 				}
 				if buf != nil {
@@ -173,21 +173,17 @@ func TestDefaultReader(t *testing.T) {
 					if r.buf != nil {
 						t.Fatal("buf is not nil")
 					}
-				case *BytesReader:
-					if r.buf != nil {
-						t.Fatal("buf is not nil")
-					}
 				}
 				_, err = reader.Next(1)
-				if err != io.EOF {
+				if err != io.EOF && err != errNoRemainingData {
 					t.Fatal("err is not io.EOF", err)
 				}
 				_, err = reader.Peek(1)
-				if err != io.EOF {
+				if err != io.EOF && err != errNoRemainingData {
 					t.Fatal("err is not io.EOF", err)
 				}
 				err = reader.Skip(1)
-				if err != io.EOF {
+				if err != io.EOF && err != errNoRemainingData {
 					t.Fatal("err is not io.EOF", err)
 				}
 			},
@@ -207,19 +203,25 @@ func TestDefaultReader(t *testing.T) {
 }
 
 type mockWriter struct {
-	dataSize int
+	expectedDataSize int
+	buf              []byte
 }
 
 func (w *mockWriter) Write(p []byte) (n int, err error) {
-	if w.dataSize != len(p) {
-		return 0, fmt.Errorf("length is not %d", w.dataSize)
+	w.buf = append(w.buf, p...)
+	return len(p), nil
+}
+
+func (w *mockWriter) check() error {
+	if w.expectedDataSize != len(w.buf) {
+		return fmt.Errorf("length is not %d", w.expectedDataSize)
 	}
-	for _, b := range p {
+	for _, b := range w.buf {
 		if b != 0xff {
-			return 0, errors.New("data not equal")
+			return errors.New("data not equal")
 		}
 	}
-	return len(p), nil
+	return nil
 }
 
 func setBytes(b []byte, v byte) {
@@ -231,11 +233,12 @@ func setBytes(b []byte, v byte) {
 func TestDefaultWriter(t *testing.T) {
 	tcases := []struct {
 		dataSize int
-		handle   func(writer Writer)
+		handle   func(writer *mockWriter)
 	}{
 		{
 			dataSize: 1024 * 18,
-			handle: func(writer Writer) {
+			handle: func(w *mockWriter) {
+				writer := NewDefaultWriter(w)
 				buf, err := writer.Malloc(1024)
 				if err != nil {
 					t.Fatal(err)
@@ -271,18 +274,13 @@ func TestDefaultWriter(t *testing.T) {
 				if err = writer.Flush(); err != nil {
 					t.Fatal(err)
 				}
+				if err = w.check(); err != nil {
+					t.Fatal(err)
+				}
 			},
 		},
 	}
 	for _, tcase := range tcases {
-		w := NewDefaultWriter(&mockWriter{dataSize: tcase.dataSize})
-		tcase.handle(w)
-
-		buf := make([]byte, 0, defaultBufSize)
-		bw := NewBytesWriter(&buf)
-		tcase.handle(bw)
-		if len(buf) != tcase.dataSize {
-			t.Fatal("write data size is not equal!")
-		}
+		tcase.handle(&mockWriter{expectedDataSize: tcase.dataSize})
 	}
 }

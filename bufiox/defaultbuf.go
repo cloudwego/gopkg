@@ -17,8 +17,8 @@ package bufiox
 import (
 	"errors"
 	"io"
+	"net"
 
-	"github.com/bytedance/gopkg/lang/dirtmake"
 	"github.com/bytedance/gopkg/lang/mcache"
 )
 
@@ -27,50 +27,29 @@ const maxConsecutiveEmptyReads = 100
 var _ Reader = &DefaultReader{}
 
 type DefaultReader struct {
-	buf         []byte // buf[ri:] is the buffer for reading.
-	bufReadOnly bool
-	pendingBuf  [][]byte
+	buf    []byte // buf[ri:] is the buffer for reading.
+	ri     int    // buf read positions
+	toFree [][]byte
+
+	rn int // read len
 
 	rd  io.Reader // reader provided by the client
-	ri  int       // buf read positions
 	err error
 
 	maxSizeStats maxSizeStats
 }
 
 const (
-	defaultBufSize = 4096
+	defaultBufSize       = 8 * 1024
+	nocopyWriteThreshold = 4 * 1024
 )
 
 var errNegativeCount = errors.New("bufiox: negative count")
 
 // NewDefaultReader returns a new DefaultReader that reads from r.
 func NewDefaultReader(rd io.Reader) *DefaultReader {
-	r := &DefaultReader{}
-	r.reset(rd, nil)
+	r := &DefaultReader{rd: rd}
 	return r
-}
-
-// NewBytesReader returns a new DefaultReader that reads from buf[:len(buf)].
-// Its operation on buf is read-only.
-func NewBytesReader(buf []byte) *BytesReader {
-	r := &BytesReader{}
-	r.reset(r.fakedIOReader, buf)
-	return r
-}
-
-type BytesReader struct {
-	DefaultReader
-	fakedIOReader fakeIOReader
-}
-
-func (r *DefaultReader) reset(rd io.Reader, buf []byte) {
-	if cap(buf) > 0 {
-		// set readOnly for buf from outside
-		*r = DefaultReader{buf: buf, rd: rd, bufReadOnly: true}
-	} else {
-		*r = DefaultReader{buf: nil, rd: rd}
-	}
 }
 
 func (r *DefaultReader) acquireSlow(n int) int {
@@ -78,29 +57,19 @@ func (r *DefaultReader) acquireSlow(n int) int {
 		return len(r.buf) - r.ri
 	}
 
-	if cap(r.buf) == 0 {
-		maxSize := r.maxSizeStats.maxSize()
-		if maxSize < defaultBufSize {
-			maxSize = defaultBufSize
-		}
-		for ; maxSize < n; maxSize *= 2 {
-		}
-		r.buf = mcache.Malloc(0, maxSize)
-		r.bufReadOnly = false
-	}
-
 	if n > cap(r.buf)-r.ri {
-		// grow buffer
-		var ncap int
-		for ncap = cap(r.buf) * 2; ncap-r.ri < n; ncap *= 2 {
+		// new buffer
+		ncap := (cap(r.buf) - r.ri) * 2
+		if ncap < defaultBufSize {
+			ncap = defaultBufSize
 		}
+		for ; ncap < n; ncap *= 2 {
+		}
+		r.toFree = append(r.toFree, r.buf)
 		nbuf := mcache.Malloc(ncap)
-		if !r.bufReadOnly {
-			r.pendingBuf = append(r.pendingBuf, r.buf)
-		}
-		cn := copy(nbuf[r.ri:], r.buf[r.ri:])
-		r.buf = nbuf[:(r.ri + cn)]
-		r.bufReadOnly = false
+		cn := copy(nbuf, r.buf[r.ri:])
+		r.buf = nbuf[:cn]
+		r.ri = 0
 	}
 
 	for i := 0; i < maxConsecutiveEmptyReads; i++ {
@@ -139,6 +108,7 @@ func (r *DefaultReader) Next(n int) (buf []byte, err error) {
 	// nocopy read
 	buf = r.buf[r.ri : r.ri+n]
 	r.ri += n
+	r.rn += n
 	return
 }
 
@@ -168,17 +138,19 @@ func (r *DefaultReader) Skip(n int) (err error) {
 		return
 	}
 	r.ri += n
+	r.rn += n
 	return
 }
 
 func (r *DefaultReader) ReadLen() (n int) {
-	return r.ri
+	return r.rn
 }
 
 func (r *DefaultReader) ReadBinary(bs []byte) (m int, err error) {
 	m = r.acquire(len(bs))
 	copy(bs, r.buf[r.ri:r.ri+m])
 	r.ri += m
+	r.rn += m
 	if len(bs) > m {
 		err = r.err
 	}
@@ -196,6 +168,7 @@ func (r *DefaultReader) Read(bs []byte) (n int, err error) {
 		// return the available data instead of waiting for more
 		n = copy(bs, r.buf[r.ri:])
 		r.ri += n
+		r.rn += n
 		return n, nil
 	}
 	// try to read
@@ -205,121 +178,80 @@ func (r *DefaultReader) Read(bs []byte) (n int, err error) {
 	}
 	n = copy(bs, r.buf[r.ri:])
 	r.ri += n
+	r.rn += n
 	return n, nil
 }
 
 func (r *DefaultReader) Release(e error) error {
-	if r.pendingBuf != nil {
-		for _, buf := range r.pendingBuf {
+	if r.toFree != nil {
+		for i, buf := range r.toFree {
 			mcache.Free(buf)
+			r.toFree[i] = nil
 		}
+		r.toFree = r.toFree[:0]
 	}
-	r.pendingBuf = nil
 	if len(r.buf)-r.ri == 0 {
 		// release buf
-		r.maxSizeStats.update(cap(r.buf))
-		if !r.bufReadOnly && cap(r.buf) > 0 {
+		r.maxSizeStats.update(r.rn)
+		if cap(r.buf) > 0 {
 			mcache.Free(r.buf)
 		}
 		r.buf = nil
-	} else {
-		if r.bufReadOnly {
-			r.buf = r.buf[r.ri:]
-		} else {
-			n := copy(r.buf, r.buf[r.ri:])
-			r.buf = r.buf[:n]
-		}
+		r.ri = 0
 	}
-	r.ri = 0
+	r.rn = 0
 	return nil
-}
-
-type fakeIOReader struct{}
-
-func (fakeIOReader) Read(p []byte) (n int, err error) {
-	return 0, io.EOF
 }
 
 var _ Writer = &DefaultWriter{}
 
 type DefaultWriter struct {
-	buf        []byte
-	pendingBuf [][]byte
+	chunk  []byte
+	chunks net.Buffers // [][]byte
+
+	wl int // written len
+
+	toFree [][]byte
 
 	wd  io.Writer
 	err error
-
-	maxSizeStats maxSizeStats
-
-	disableCache bool
 }
 
 // NewDefaultWriter returns a new DefaultWriter that writes to w.
 func NewDefaultWriter(wd io.Writer) *DefaultWriter {
-	w := &DefaultWriter{}
-	w.reset(wd, nil, false)
+	w := &DefaultWriter{wd: wd}
 	return w
-}
-
-// NewBytesWriter returns a new DefaultWriter that writes to buf[len(buf):cap(buf)].
-// The WrittenLen is set to len(buf) before the first write.
-func NewBytesWriter(buf *[]byte) *BytesWriter {
-	w := &BytesWriter{}
-	w.fakedIOWriter.bw = w
-	w.flushBytes = buf
-	w.reset(&w.fakedIOWriter, *buf, true)
-	return w
-}
-
-type BytesWriter struct {
-	DefaultWriter
-	fakedIOWriter fakeIOWriter
-	flushBytes    *[]byte
-}
-
-func (w *DefaultWriter) reset(wd io.Writer, buf []byte, disableCache bool) {
-	*w = DefaultWriter{buf: buf, wd: wd, disableCache: disableCache}
 }
 
 func (w *DefaultWriter) acquire(n int) {
 	// fast path, for inline
-	if len(w.buf)+n <= cap(w.buf) {
+	if len(w.chunk)+n <= cap(w.chunk) {
 		return
 	}
 	w.acquireSlow(n)
 }
 
 func (w *DefaultWriter) acquireSlow(n int) {
-	if cap(w.buf) == 0 {
-		maxSize := w.maxSizeStats.maxSize()
-		if maxSize < defaultBufSize {
-			maxSize = defaultBufSize
+	if n > cap(w.chunk)-len(w.chunk) {
+		if len(w.chunk) > 0 {
+			w.chunks = append(w.chunks, w.chunk)
+			w.chunk = nil
 		}
-		for ; maxSize < n; maxSize *= 2 {
-		}
-		if w.disableCache {
-			w.buf = dirtmake.Bytes(0, maxSize)
-		} else {
-			w.buf = mcache.Malloc(0, maxSize)
-		}
-	}
-
-	if n > cap(w.buf)-len(w.buf) {
-		// grow buffer
+		// new buffer
 		var ncap int
-		// reserve the length of len(w.buf) for copying data from the old buffer during flush
-		for ncap = cap(w.buf) * 2; ncap-len(w.buf) < n; ncap *= 2 {
+		for ncap = defaultBufSize; ncap < n; ncap *= 2 {
 		}
-		var nbuf []byte
-		if w.disableCache {
-			nbuf = dirtmake.Bytes(ncap, ncap)
-		} else {
-			nbuf = mcache.Malloc(ncap)
-		}
-		w.pendingBuf = append(w.pendingBuf, w.buf)
-		// delay copying until flushing
-		w.buf = nbuf[:len(w.buf)]
+		w.chunk = mcache.Malloc(0, ncap)
+		w.toFree = append(w.toFree, w.chunk)
 	}
+}
+
+func (w *DefaultWriter) writeDirect(buf []byte) {
+	if len(w.chunk) > 0 {
+		w.chunks = append(w.chunks, w.chunk)
+		w.chunk = nil
+	}
+	w.chunks = append(w.chunks, buf)
 }
 
 func (w *DefaultWriter) Malloc(n int) (buf []byte, err error) {
@@ -332,8 +264,10 @@ func (w *DefaultWriter) Malloc(n int) (buf []byte, err error) {
 		return
 	}
 	w.acquire(n)
-	buf = w.buf[len(w.buf) : len(w.buf)+n]
-	w.buf = w.buf[:len(w.buf)+n]
+	buf = w.chunk[len(w.chunk) : len(w.chunk)+n]
+	w.chunk = w.chunk[:len(w.chunk)+n]
+
+	w.wl += n
 	return
 }
 
@@ -342,14 +276,20 @@ func (w *DefaultWriter) WriteBinary(bs []byte) (n int, err error) {
 		err = w.err
 		return
 	}
+	if len(bs) >= nocopyWriteThreshold {
+		w.writeDirect(bs)
+		return len(bs), nil
+	}
 	w.acquire(len(bs))
-	n = copy(w.buf[len(w.buf):cap(w.buf)], bs)
-	w.buf = w.buf[:len(w.buf)+n]
+	n = copy(w.chunk[len(w.chunk):cap(w.chunk)], bs)
+	w.chunk = w.chunk[:len(w.chunk)+n]
+
+	w.wl += len(bs)
 	return
 }
 
 func (w *DefaultWriter) WrittenLen() int {
-	return len(w.buf)
+	return w.wl
 }
 
 func (w *DefaultWriter) Flush() (err error) {
@@ -357,41 +297,32 @@ func (w *DefaultWriter) Flush() (err error) {
 		err = w.err
 		return
 	}
-	if w.buf == nil {
+	if len(w.chunk) > 0 {
+		w.chunks = append(w.chunks, w.chunk)
+		w.chunk = nil
+	}
+	if len(w.chunks) == 0 {
 		return nil
 	}
-	// copy old buffer
-	var offset int
-	for _, oldBuf := range w.pendingBuf {
-		offset += copy(w.buf[offset:], oldBuf[offset:])
-	}
-	if _, err = w.wd.Write(w.buf); err != nil {
+	// might call writev if w.wd is net.Conn
+	if _, err = w.chunks.WriteTo(w.wd); err != nil {
 		w.err = err
 		return err
 	}
-	w.maxSizeStats.update(cap(w.buf))
-	if !w.disableCache {
-		if cap(w.buf) > 0 {
-			mcache.Free(w.buf)
-		}
-		if w.pendingBuf != nil {
-			for _, buf := range w.pendingBuf {
-				mcache.Free(buf)
-			}
-		}
+	w.chunk = nil
+	for i := range w.chunks {
+		w.chunks[i] = nil
 	}
-	w.buf = nil
-	w.pendingBuf = nil
+	w.chunks = w.chunks[:0]
+	w.wl = 0
+	if w.toFree != nil {
+		for i, buf := range w.toFree {
+			mcache.Free(buf)
+			w.toFree[i] = nil
+		}
+		w.toFree = w.toFree[:0]
+	}
 	return nil
-}
-
-type fakeIOWriter struct {
-	bw *BytesWriter
-}
-
-func (w *fakeIOWriter) Write(p []byte) (n int, err error) {
-	*w.bw.flushBytes = p
-	return len(p), nil
 }
 
 const statsBucketNum = 10
