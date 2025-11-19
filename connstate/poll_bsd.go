@@ -20,6 +20,7 @@ package connstate
 import (
 	"sync/atomic"
 	"syscall"
+	"time"
 	"unsafe"
 )
 
@@ -29,14 +30,23 @@ type kqueue struct {
 
 func (p *kqueue) wait() error {
 	events := make([]syscall.Kevent_t, 1024)
+	timeout := &syscall.Timespec{Sec: 0, Nsec: 0}
+	var n int
+	var err error
 	for {
-		n, err := syscall.Kevent(p.fd, nil, events, nil)
+		// timeout=0 must be set to avoid getting stuck in a blocking syscall,
+		// which could cause a P to fail to be released in a timely manner.
+		n, err = syscall.Kevent(p.fd, nil, events, timeout)
 		if err != nil && err != syscall.EINTR {
 			// exit gracefully
 			if err == syscall.EBADF {
 				return nil
 			}
 			return err
+		}
+		if n <= 0 {
+			time.Sleep(10 * time.Millisecond) // avoid busy loop
+			continue
 		}
 		for i := 0; i < n; i++ {
 			ev := &events[i]

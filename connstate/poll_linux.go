@@ -17,9 +17,8 @@ package connstate
 import (
 	"sync/atomic"
 	"syscall"
+	"time"
 	"unsafe"
-
-	isyscall "github.com/cloudwego/gopkg/internal/syscall"
 )
 
 const _EPOLLET uint32 = 0x80000000
@@ -31,12 +30,18 @@ type epoller struct {
 //go:nocheckptr
 func (p *epoller) wait() error {
 	events := make([]syscall.EpollEvent, 1024)
+	var n int
+	var err error
 	for {
-		// epoll wait is a blocking syscall, so we need to call entersyscallblock to handoff P,
-		// and let the P run other goroutines.
-		n, err := isyscall.EpollWait(p.epfd, events, -1)
+		// timeout=0 must be set to avoid getting stuck in a blocking syscall,
+		// which could cause a P to fail to be released in a timely manner.
+		n, err = syscall.EpollWait(p.epfd, events, 0)
 		if err != nil && err != syscall.EINTR {
 			return err
+		}
+		if n <= 0 {
+			time.Sleep(10 * time.Millisecond) // avoid busy loop
+			continue
 		}
 		for i := 0; i < n; i++ {
 			ev := &events[i]
