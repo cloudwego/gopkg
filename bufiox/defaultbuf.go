@@ -40,8 +40,9 @@ type DefaultReader struct {
 }
 
 const (
-	defaultBufSize       = 8 * 1024
-	nocopyWriteThreshold = 4 * 1024
+	defaultBufSize        = 8 * 1024
+	nocopyWriteThreshold  = 4 * 1024
+	directlyReadThreshold = 4 * 1024
 )
 
 var errNegativeCount = errors.New("bufiox: negative count")
@@ -52,47 +53,51 @@ func NewDefaultReader(rd io.Reader) *DefaultReader {
 	return r
 }
 
-func (r *DefaultReader) acquireSlow(n int) int {
+// read data to buf[len:cap] until len(buf) >= expectedLen, returns the new buffer length and any err encountered.
+func (r *DefaultReader) readFromReader(buf []byte, expectedLen int) (int, error) {
+	for i := 0; i < maxConsecutiveEmptyReads; i++ {
+		m, err := r.rd.Read(buf[len(buf):cap(buf)])
+		buf = buf[:len(buf)+m]
+		if err != nil {
+			return len(buf), err
+		}
+		if expectedLen <= len(buf) {
+			return len(buf), nil
+		}
+	}
+	return len(buf), io.ErrNoProgress
+}
+
+// fill reads a new chunk into the buffer.
+func (r *DefaultReader) acquire(n int, skip bool) int {
 	if r.err != nil {
 		return len(r.buf) - r.ri
 	}
 
 	if n > cap(r.buf)-r.ri {
-		// new buffer
-		ncap := (cap(r.buf) - r.ri) * 2
-		if ncap < defaultBufSize {
-			ncap = defaultBufSize
+		// calculate new size
+		size := cap(r.buf) - r.ri
+		if size < defaultBufSize {
+			size = defaultBufSize
 		}
-		for ; ncap < n; ncap *= 2 {
+		for ; size < n; size *= 2 {
 		}
+		buf := mcache.Malloc(size)
+		if !skip {
+			// copy remaining data
+			copy(buf, r.buf[r.ri:])
+		}
+		// free stale buf
 		r.toFree = append(r.toFree, r.buf)
-		nbuf := mcache.Malloc(ncap)
-		cn := copy(nbuf, r.buf[r.ri:])
-		r.buf = nbuf[:cn]
+		// set new buf
+		r.buf = buf[:len(r.buf)-r.ri]
 		r.ri = 0
 	}
 
-	for i := 0; i < maxConsecutiveEmptyReads; i++ {
-		m, err := r.rd.Read(r.buf[len(r.buf):cap(r.buf)])
-		r.buf = r.buf[:len(r.buf)+m]
-		if err != nil {
-			r.err = err
-			return len(r.buf) - r.ri
-		}
-		if n <= len(r.buf)-r.ri {
-			return n
-		}
-	}
-	return len(r.buf) - r.ri
-}
-
-// fill reads a new chunk into the buffer.
-func (r *DefaultReader) acquire(n int) int {
-	// fast path, for inline
-	if n <= len(r.buf)-r.ri {
-		return n
-	}
-	return r.acquireSlow(n)
+	var nl int
+	nl, r.err = r.readFromReader(r.buf[r.ri:], n)
+	r.buf = r.buf[:r.ri+nl]
+	return nl
 }
 
 func (r *DefaultReader) Next(n int) (buf []byte, err error) {
@@ -100,10 +105,12 @@ func (r *DefaultReader) Next(n int) (buf []byte, err error) {
 		err = errNegativeCount
 		return
 	}
-	m := r.acquire(n)
-	if n > m {
-		err = r.err
-		return
+	if n > len(r.buf)-r.ri {
+		m := r.acquire(n, false)
+		if n > m {
+			err = r.err
+			return
+		}
 	}
 	// nocopy read
 	buf = r.buf[r.ri : r.ri+n]
@@ -117,10 +124,12 @@ func (r *DefaultReader) Peek(n int) (buf []byte, err error) {
 		err = errNegativeCount
 		return
 	}
-	m := r.acquire(n)
-	if n > m {
-		err = r.err
-		return
+	if n > len(r.buf)-r.ri {
+		m := r.acquire(n, false)
+		if n > m {
+			err = r.err
+			return
+		}
 	}
 	// nocopy read
 	buf = r.buf[r.ri : r.ri+n]
@@ -132,10 +141,12 @@ func (r *DefaultReader) Skip(n int) (err error) {
 		err = errNegativeCount
 		return
 	}
-	m := r.acquire(n)
-	if n > m {
-		err = r.err
-		return
+	if n > len(r.buf)-r.ri {
+		m := r.acquire(n, true)
+		if n > m {
+			err = r.err
+			return
+		}
 	}
 	r.ri += n
 	r.rn += n
@@ -146,14 +157,30 @@ func (r *DefaultReader) ReadLen() (n int) {
 	return r.rn
 }
 
-func (r *DefaultReader) ReadBinary(bs []byte) (m int, err error) {
-	m = r.acquire(len(bs))
-	copy(bs, r.buf[r.ri:r.ri+m])
-	r.ri += m
-	r.rn += m
-	if len(bs) > m {
-		err = r.err
+// ReadBinary reads exactly len(bs) bytes to bs, wait for reading from the underlying reader until done,
+// or returns the actual read data length and err if there's no enough data.
+func (r *DefaultReader) ReadBinary(bs []byte) (n int, err error) {
+	if len(bs) == 0 {
+		return
 	}
+	n = copy(bs, r.buf[r.ri:])
+	r.ri += n
+	if len(bs) > n {
+		if len(bs)-n >= directlyReadThreshold {
+			// If the data outside the buffer is greater than the threshold,
+			// directly call Read to reducing copying overhead.
+			n, r.err = r.readFromReader(bs[:n:len(bs)], len(bs))
+		} else {
+			r.acquire(len(bs)-n, false)
+			m := copy(bs[n:], r.buf[r.ri:])
+			r.ri += m
+			n = n + m
+		}
+		r.rn += n
+		err = r.err
+		return
+	}
+	r.rn += n
 	return
 }
 
@@ -162,24 +189,26 @@ func (r *DefaultReader) ReadBinary(bs []byte) (m int, err error) {
 // which differs from ReadBinary.
 func (r *DefaultReader) Read(bs []byte) (n int, err error) {
 	if len(bs) == 0 {
-		return 0, nil
-	}
-	if available := len(r.buf) - r.ri; available != 0 {
-		// return the available data instead of waiting for more
-		n = copy(bs, r.buf[r.ri:])
-		r.ri += n
-		r.rn += n
-		return n, nil
-	}
-	// try to read
-	m := r.acquire(1)
-	if m < 1 {
-		return 0, r.err
+		return
 	}
 	n = copy(bs, r.buf[r.ri:])
-	r.ri += n
+	if n > 0 {
+		r.ri += n
+		r.rn += n
+		return
+	}
+	if len(bs) >= directlyReadThreshold {
+		// If the data outside the buffer is greater than the threshold,
+		// directly call Read to reducing copying overhead.
+		n, r.err = r.rd.Read(bs)
+	} else {
+		r.acquire(1, false) // try read 1 byte
+		n = copy(bs, r.buf[r.ri:])
+		r.ri += n
+	}
 	r.rn += n
-	return n, nil
+	err = r.err
+	return
 }
 
 func (r *DefaultReader) Release(e error) error {
@@ -192,13 +221,13 @@ func (r *DefaultReader) Release(e error) error {
 	}
 	if len(r.buf)-r.ri == 0 {
 		// release buf
-		r.maxSizeStats.update(r.rn)
 		if cap(r.buf) > 0 {
 			mcache.Free(r.buf)
 		}
 		r.buf = nil
 		r.ri = 0
 	}
+	r.maxSizeStats.update(r.rn)
 	r.rn = 0
 	return nil
 }
