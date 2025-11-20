@@ -54,7 +54,7 @@ func NewDefaultReader(rd io.Reader) *DefaultReader {
 }
 
 // read data to buf[len:cap] until len(buf) >= expectedLen, returns the new buffer length and any err encountered.
-func (r *DefaultReader) readFromReader(buf []byte, expectedLen int) (int, error) {
+func (r *DefaultReader) readExpected(buf []byte, expectedLen int) (int, error) {
 	for i := 0; i < maxConsecutiveEmptyReads; i++ {
 		m, err := r.rd.Read(buf[len(buf):cap(buf)])
 		buf = buf[:len(buf)+m]
@@ -76,7 +76,7 @@ func (r *DefaultReader) acquire(n int, skip bool) int {
 
 	if n > cap(r.buf)-r.ri {
 		// calculate new size
-		size := cap(r.buf) - r.ri
+		size := r.maxSizeStats.maxSize()
 		if size < defaultBufSize {
 			size = defaultBufSize
 		}
@@ -95,7 +95,7 @@ func (r *DefaultReader) acquire(n int, skip bool) int {
 	}
 
 	var nl int
-	nl, r.err = r.readFromReader(r.buf[r.ri:], n)
+	nl, r.err = r.readExpected(r.buf[r.ri:], n)
 	r.buf = r.buf[:r.ri+nl]
 	return nl
 }
@@ -169,7 +169,7 @@ func (r *DefaultReader) ReadBinary(bs []byte) (n int, err error) {
 		if len(bs)-n >= directlyReadThreshold {
 			// If the data outside the buffer is greater than the threshold,
 			// directly call Read to reducing copying overhead.
-			n, r.err = r.readFromReader(bs[:n:len(bs)], len(bs))
+			n, r.err = r.readExpected(bs[:n:len(bs)], len(bs))
 		} else {
 			r.acquire(len(bs)-n, false)
 			m := copy(bs[n:], r.buf[r.ri:])
@@ -359,19 +359,21 @@ const statsBucketNum = 10
 type maxSizeStats struct {
 	buckets   [statsBucketNum]int
 	bucketIdx int
+	_maxSize  int
 }
 
 func (s *maxSizeStats) update(size int) {
 	s.buckets[s.bucketIdx] = size
 	s.bucketIdx = (s.bucketIdx + 1) % statsBucketNum
-}
-
-func (s *maxSizeStats) maxSize() int {
 	var maxSize int
 	for _, size := range s.buckets {
 		if maxSize < size {
 			maxSize = size
 		}
 	}
-	return maxSize
+	s._maxSize = maxSize
+}
+
+func (s *maxSizeStats) maxSize() int {
+	return s._maxSize
 }

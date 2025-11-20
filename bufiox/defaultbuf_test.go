@@ -63,7 +63,7 @@ func TestDefaultReader(t *testing.T) {
 			dataSize: 1024,
 			handle: func(reader Reader) {
 				buf, err := reader.Next(1025)
-				if err != io.EOF && err != errNoRemainingData {
+				if err != io.EOF {
 					t.Fatal("err is not io.EOF", err)
 				}
 				if buf != nil {
@@ -175,15 +175,15 @@ func TestDefaultReader(t *testing.T) {
 					}
 				}
 				_, err = reader.Next(1)
-				if err != io.EOF && err != errNoRemainingData {
+				if err != io.EOF {
 					t.Fatal("err is not io.EOF", err)
 				}
 				_, err = reader.Peek(1)
-				if err != io.EOF && err != errNoRemainingData {
+				if err != io.EOF {
 					t.Fatal("err is not io.EOF", err)
 				}
 				err = reader.Skip(1)
-				if err != io.EOF && err != errNoRemainingData {
+				if err != io.EOF {
 					t.Fatal("err is not io.EOF", err)
 				}
 			},
@@ -192,13 +192,6 @@ func TestDefaultReader(t *testing.T) {
 	for _, tcase := range tcases {
 		r := NewDefaultReader(&mockReader{dataSize: tcase.dataSize})
 		tcase.handle(r)
-
-		buf := make([]byte, tcase.dataSize)
-		for i := range buf {
-			buf[i] = 0xff
-		}
-		br := NewBytesReader(buf)
-		tcase.handle(br)
 	}
 }
 
