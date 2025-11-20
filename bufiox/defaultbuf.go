@@ -83,12 +83,14 @@ func (r *DefaultReader) acquire(n int, skip bool) int {
 		for ; size < n; size *= 2 {
 		}
 		buf := mcache.Malloc(size)
-		if !skip {
+		if !skip && len(r.buf)-r.ri > 0 {
 			// copy remaining data
 			copy(buf, r.buf[r.ri:])
 		}
-		// free stale buf
-		r.toFree = append(r.toFree, r.buf)
+		if cap(r.buf) > 0 {
+			// free stale buf
+			r.toFree = append(r.toFree, r.buf)
+		}
 		// set new buf
 		r.buf = buf[:len(r.buf)-r.ri]
 		r.ri = 0
