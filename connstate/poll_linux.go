@@ -41,14 +41,14 @@ func (p *epoller) wait() error {
 		}
 		if n <= 0 {
 			time.Sleep(10 * time.Millisecond) // avoid busy loop
-			continue
-		}
-		for i := 0; i < n; i++ {
-			ev := &events[i]
-			op := *(**fdOperator)(unsafe.Pointer(&ev.Fd))
-			if conn := (*connStater)(atomic.LoadPointer(&op.conn)); conn != nil {
-				if ev.Events&(syscall.EPOLLHUP|syscall.EPOLLRDHUP|syscall.EPOLLERR) != 0 {
-					atomic.CompareAndSwapUint32(&conn.state, uint32(StateOK), uint32(StateRemoteClosed))
+		} else {
+			for i := 0; i < n; i++ {
+				ev := &events[i]
+				op := *(**fdOperator)(unsafe.Pointer(&ev.Fd))
+				if conn := (*connStater)(atomic.LoadPointer(&op.conn)); conn != nil {
+					if ev.Events&(syscall.EPOLLHUP|syscall.EPOLLRDHUP|syscall.EPOLLERR) != 0 {
+						atomic.CompareAndSwapUint32(&conn.state, uint32(StateOK), uint32(StateRemoteClosed))
+					}
 				}
 			}
 		}
