@@ -354,7 +354,10 @@ func (w *DefaultWriter) Flush() (err error) {
 	return nil
 }
 
-const statsBucketNum = 10
+const (
+	statsBucketNum = 10
+	maxSizeLimit   = 8 * 1024 * 1024
+)
 
 type maxSizeStats struct {
 	buckets   [statsBucketNum]int
@@ -370,6 +373,9 @@ func (s *maxSizeStats) update(size int) {
 		if maxSize < size {
 			maxSize = size
 		}
+	}
+	if maxSize > maxSizeLimit {
+		maxSize = maxSizeLimit
 	}
 	s._maxSize = maxSize
 }
