@@ -309,6 +309,7 @@ func (w *DefaultWriter) WriteBinary(bs []byte) (n int, err error) {
 	}
 	if len(bs) >= nocopyWriteThreshold {
 		w.writeDirect(bs)
+		w.wl += len(bs)
 		return len(bs), nil
 	}
 	w.acquire(len(bs))
