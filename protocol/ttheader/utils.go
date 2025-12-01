@@ -16,6 +16,7 @@ package ttheader
 
 import (
 	"encoding/binary"
+	"fmt"
 	"io"
 
 	"github.com/cloudwego/gopkg/bufiox"
@@ -119,6 +120,10 @@ func WriteString(val string, out bufiox.Writer) (int, error) {
 // WriteString2BLen ...
 func WriteString2BLen(val string, out bufiox.Writer) (int, error) {
 	strLen := len(val)
+	if strLen > maxHeaderStringSize {
+		// printing first 100 bytes is enough to troubleshooting
+		return 0, fmt.Errorf("string exceeded %dB max size (actual: %dB, preview: %q)", maxHeaderStringSize, strLen, val[:100]+"...")
+	}
 	if err := WriteUint16(uint16(strLen), out); err != nil {
 		return 0, err
 	}

@@ -83,8 +83,9 @@ func Decode(ctx context.Context, in bufiox.Reader) (param DecodeParam, err error
 	seqID := Bytes2Uint32NoCheck(headerMeta[Size32*2 : Size32*3])
 	param.SeqID = int32(seqID)
 
-	headerInfoSize := Bytes2Uint16NoCheck(headerMeta[Size32*3:TTHeaderMetaSize]) * 4
-	if uint32(headerInfoSize) > MaxHeaderSize || headerInfoSize < 2 {
+	// avoid uint16 * 4 overflow, using uint32 to convert the result of Bytes2Uint16NoCheck
+	headerInfoSize := uint32(Bytes2Uint16NoCheck(headerMeta[Size32*3:TTHeaderMetaSize])) * 4
+	if headerInfoSize > MaxHeaderSize || headerInfoSize < 2 {
 		err = fmt.Errorf("invalid header length[%d]", headerInfoSize)
 		return
 	}

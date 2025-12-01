@@ -19,6 +19,8 @@ import (
 	"encoding/binary"
 	"net"
 	"reflect"
+	"strconv"
+	"strings"
 	"sync"
 	"testing"
 
@@ -167,4 +169,264 @@ func checkParamEqual(t *testing.T, encodeParam EncodeParam, decodeParam DecodePa
 	if decodeParam.PayloadLen != payloadLen {
 		t.Fatalf("encode to bytes failed, payload len not equal")
 	}
+}
+
+func TestEncodeHeaderSizeCheck(t *testing.T) {
+	t.Run("encode header below 64KB", func(t *testing.T) {
+		strInfo := make(map[string]string)
+		targetSize := 60000
+		currentSize := 0
+		i := 0
+		for currentSize < targetSize {
+			key := strings.Repeat("k", 10+i%10)
+			value := strings.Repeat("v", 100)
+			strInfo[key] = value
+			currentSize += 2 + len(key) + 2 + len(value)
+			i++
+		}
+
+		encodeParam := EncodeParam{
+			SeqID:      1,
+			ProtocolID: ProtocolIDThriftBinary,
+			StrInfo:    strInfo,
+		}
+
+		buf, err := EncodeToBytes(context.Background(), encodeParam)
+		if err != nil {
+			t.Fatalf("unexpected error when encoding header below MaxHeaderSize: %s", err.Error())
+		}
+		binary.BigEndian.PutUint32(buf, uint32(len(buf)-4))
+
+		decodeParam, err := DecodeFromBytes(context.Background(), buf)
+		if err != nil {
+			t.Fatalf("failed to decode: %s", err.Error())
+		}
+		checkParamEqual(t, encodeParam, decodeParam, len(buf), 0)
+	})
+	t.Run("encode header equals 64KB", func(t *testing.T) {
+		strInfo := make(map[string]string)
+		// PROTOCOL ID(1) + NUM TRANSFORMS(1) + INFO ID TYPE(1) + NUM HEADERS(2) +
+		// 3 + 2 + 65524 + 2 = 65536
+		strInfo["key"] = strings.Repeat("v", 65524)
+		encodeParam := EncodeParam{
+			SeqID:      1,
+			ProtocolID: ProtocolIDThriftBinary,
+			StrInfo:    strInfo,
+		}
+
+		buf, err := EncodeToBytes(context.Background(), encodeParam)
+		if err != nil {
+			t.Fatalf("unexpected error when encoding header below MaxHeaderSize: %s", err.Error())
+		}
+		binary.BigEndian.PutUint32(buf, uint32(len(buf)-4))
+
+		decodeParam, err := DecodeFromBytes(context.Background(), buf)
+		if err != nil {
+			t.Fatalf("failed to decode: %s", err.Error())
+		}
+		checkParamEqual(t, encodeParam, decodeParam, len(buf), 0)
+	})
+	t.Run("encode header equals MaxHeaderSize", func(t *testing.T) {
+		strInfo := make(map[string]string)
+		// PROTOCOL ID(1) + NUM TRANSFORMS(1) + INFO ID TYPE(1) + NUM HEADERS(2) +
+		// 2 + 65522 + 2 + 65535 + 2 + 65535 + 2 + 65535 = 262140
+		strInfo[strings.Repeat("k", 65522)] = strings.Repeat("v", 65535)
+		strInfo[strings.Repeat("x", 65535)] = strings.Repeat("y", 65535)
+		encodeParam := EncodeParam{
+			SeqID:      1,
+			ProtocolID: ProtocolIDThriftBinary,
+			StrInfo:    strInfo,
+		}
+
+		buf, err := EncodeToBytes(context.Background(), encodeParam)
+		if err != nil {
+			t.Fatalf("unexpected error when encoding header below MaxHeaderSize: %s", err.Error())
+		}
+		binary.BigEndian.PutUint32(buf, uint32(len(buf)-4))
+
+		decodeParam, err := DecodeFromBytes(context.Background(), buf)
+		if err != nil {
+			t.Fatalf("failed to decode: %s", err.Error())
+		}
+		checkParamEqual(t, encodeParam, decodeParam, len(buf), 0)
+	})
+	t.Run("encode header exceeding MaxHeaderSize", func(t *testing.T) {
+		strInfo := make(map[string]string)
+		for i := 0; i < 5000; i++ {
+			key := strconv.Itoa(i)
+			value := strings.Repeat("v", 60)
+			strInfo[key] = value
+		}
+
+		encodeParam := EncodeParam{
+			SeqID:      1,
+			ProtocolID: ProtocolIDThriftBinary,
+			StrInfo:    strInfo,
+		}
+
+		_, err := EncodeToBytes(context.Background(), encodeParam)
+		if err == nil {
+			t.Fatal("expected error when encoding header exceeding MaxHeaderSize, but got nil")
+		}
+		if !strings.Contains(err.Error(), "invalid header length") {
+			t.Fatalf("expected 'invalid header length' error, but got: %s", err.Error())
+		}
+	})
+}
+
+func TestEncodeHeaderStringLengthCheck(t *testing.T) {
+	t.Run("StrInfo key length equals maxHeaderStringSize", func(t *testing.T) {
+		key := strings.Repeat("k", maxHeaderStringSize)
+
+		encodeParam := EncodeParam{
+			SeqID:      1,
+			ProtocolID: ProtocolIDThriftBinary,
+			StrInfo: map[string]string{
+				key: "val",
+			},
+		}
+
+		buf, err := EncodeToBytes(context.Background(), encodeParam)
+		if err != nil {
+			t.Fatalf("unexpected error when encoding string at maxHeaderStringSize: %s", err.Error())
+		}
+
+		binary.BigEndian.PutUint32(buf, uint32(len(buf)-4))
+
+		decodeParam, err := DecodeFromBytes(context.Background(), buf)
+		if err != nil {
+			t.Fatalf("failed to decode: %s", err.Error())
+		}
+
+		checkParamEqual(t, encodeParam, decodeParam, len(buf), 0)
+	})
+	t.Run("StrInfo key length exceeding maxHeaderStringSize", func(t *testing.T) {
+		key := strings.Repeat("k", maxHeaderStringSize+1)
+
+		encodeParam := EncodeParam{
+			SeqID:      1,
+			ProtocolID: ProtocolIDThriftBinary,
+			StrInfo: map[string]string{
+				key: "val",
+			},
+		}
+
+		_, err := EncodeToBytes(context.Background(), encodeParam)
+		if err == nil {
+			t.Fatal("expected error when encoding string exceeding maxHeaderStringSize, but got nil")
+		}
+		t.Log(err)
+		if !strings.Contains(err.Error(), "exceeded 65535B max size") {
+			t.Fatalf("expected 'exceeded 65535B max size' error, but got: %s", err.Error())
+		}
+	})
+	t.Run("StrInfo value length equals maxHeaderStringSize", func(t *testing.T) {
+		val := strings.Repeat("v", maxHeaderStringSize)
+
+		encodeParam := EncodeParam{
+			SeqID:      1,
+			ProtocolID: ProtocolIDThriftBinary,
+			StrInfo: map[string]string{
+				"key": val,
+			},
+		}
+
+		buf, err := EncodeToBytes(context.Background(), encodeParam)
+		if err != nil {
+			t.Fatalf("unexpected error when encoding string at maxHeaderStringSize: %s", err.Error())
+		}
+
+		binary.BigEndian.PutUint32(buf, uint32(len(buf)-4))
+
+		decodeParam, err := DecodeFromBytes(context.Background(), buf)
+		if err != nil {
+			t.Fatalf("failed to decode: %s", err.Error())
+		}
+
+		checkParamEqual(t, encodeParam, decodeParam, len(buf), 0)
+	})
+	t.Run("StrInfo value length exceeding maxHeaderStringSize", func(t *testing.T) {
+		val := strings.Repeat("v", maxHeaderStringSize+1)
+
+		encodeParam := EncodeParam{
+			SeqID:      1,
+			ProtocolID: ProtocolIDThriftBinary,
+			StrInfo: map[string]string{
+				"key": val,
+			},
+		}
+
+		_, err := EncodeToBytes(context.Background(), encodeParam)
+		if err == nil {
+			t.Fatal("expected error when encoding string exceeding maxHeaderStringSize, but got nil")
+		}
+		t.Log(err)
+		if !strings.Contains(err.Error(), "exceeded 65535B max size") {
+			t.Fatalf("expected 'exceeded 65535B max size' error, but got: %s", err.Error())
+		}
+	})
+	t.Run("IntInfo value length equals maxHeaderStringSize", func(t *testing.T) {
+		val := strings.Repeat("v", maxHeaderStringSize)
+
+		encodeParam := EncodeParam{
+			SeqID:      1,
+			ProtocolID: ProtocolIDThriftBinary,
+			IntInfo: map[uint16]string{
+				1: val,
+			},
+		}
+
+		buf, err := EncodeToBytes(context.Background(), encodeParam)
+		if err != nil {
+			t.Fatalf("unexpected error when encoding string at maxHeaderStringSize: %s", err.Error())
+		}
+
+		binary.BigEndian.PutUint32(buf, uint32(len(buf)-4))
+
+		decodeParam, err := DecodeFromBytes(context.Background(), buf)
+		if err != nil {
+			t.Fatalf("failed to decode: %s", err.Error())
+		}
+
+		checkParamEqual(t, encodeParam, decodeParam, len(buf), 0)
+	})
+	t.Run("IntInfo value length exceeding maxHeaderStringSize", func(t *testing.T) {
+		val := strings.Repeat("v", maxHeaderStringSize+1)
+
+		encodeParam := EncodeParam{
+			SeqID:      1,
+			ProtocolID: ProtocolIDThriftBinary,
+			IntInfo: map[uint16]string{
+				1: val,
+			},
+		}
+
+		_, err := EncodeToBytes(context.Background(), encodeParam)
+		if err == nil {
+			t.Fatal("expected error when encoding int kv value exceeding maxHeaderStringSize, but got nil")
+		}
+		t.Log(err)
+		if !strings.Contains(err.Error(), "exceeded 65535B max size") {
+			t.Fatalf("expected 'exceeded 65535B max size' error, but got: %s", err.Error())
+		}
+	})
+	t.Run("GDPR token exceeding maxHeaderStringSize should fail", func(t *testing.T) {
+		veryLongToken := strings.Repeat("t", maxHeaderStringSize+1)
+
+		encodeParam := EncodeParam{
+			SeqID:      1,
+			ProtocolID: ProtocolIDThriftBinary,
+			StrInfo: map[string]string{
+				GDPRToken: veryLongToken,
+			},
+		}
+
+		_, err := EncodeToBytes(context.Background(), encodeParam)
+		if err == nil {
+			t.Fatal("expected error when encoding GDPR token exceeding maxHeaderStringSize, but got nil")
+		}
+		if !strings.Contains(err.Error(), "exceeded 65535B max size") {
+			t.Fatalf("expected 'exceeded 65535B max size' error, but got: %s", err.Error())
+		}
+	})
 }

@@ -18,6 +18,7 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"math"
 
 	"github.com/cloudwego/gopkg/bufiox"
 )
@@ -67,10 +68,11 @@ const (
 	MeshHeaderLenMask uint32 = 0x0000FFFF
 
 	// HeaderMask        uint32 = 0xFFFF0000
-	FlagsMask     uint32 = 0x0000FFFF
-	MethodMask    uint32 = 0x41000000 // method first byte [A-Za-z_]
-	MaxFrameSize  uint32 = 0x3FFFFFFF
-	MaxHeaderSize uint32 = 65536
+	FlagsMask           uint32 = 0x0000FFFF
+	MethodMask          uint32 = 0x41000000 // method first byte [A-Za-z_]
+	MaxFrameSize        uint32 = 0x3FFFFFFF
+	MaxHeaderSize       uint32 = 4 * math.MaxUint16
+	maxHeaderStringSize int    = math.MaxUint16
 )
 
 type HeaderFlags uint16
