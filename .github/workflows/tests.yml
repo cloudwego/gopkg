@@ -6,14 +6,14 @@ jobs:
   unittest:
     strategy:
       matrix:
-        go: [ "1.18", oldstable, stable ]
+        go: [ "1.20", oldstable, stable ]
         os: [ ubuntu-24.04-arm, ubuntu-latest ]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: ${{ matrix.go }}
           cache: true # false for self-hosted runners
@@ -24,14 +24,14 @@ jobs:
   benchmark:
     strategy:
       matrix:
-        go: [ "1.18", oldstable, stable ]
+        go: [ "1.20", oldstable, stable ]
         os: [ ubuntu-24.04-arm, ubuntu-latest ]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: ${{ matrix.go }}
           cache: true # false for self-hosted runners
