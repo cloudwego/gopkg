@@ -1,4 +1,4 @@
-// Copyright 2024 CloudWeGo Authors
+// Copyright 2025 CloudWeGo Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -397,7 +397,7 @@ func TestBytesWriter_MultipleFlush(t *testing.T) {
 
 	err = writer.Flush()
 	require.NoError(t, err)
-	assert.Equal(t, "Hello", string(buf))
+	assert.Equal(t, "", string(buf))
 }
 
 // TestBytesWriter_AcquireSlowCoverage tests acquireSlow function branches

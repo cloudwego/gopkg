@@ -161,9 +161,10 @@ func (w *BytesWriter) WrittenLen() int {
 
 func (w *BytesWriter) Flush() (err error) {
 	if len(w.buf) == 0 {
+		*w.toBuf = []byte{}
 		return nil
 	}
-	*w.toBuf = w.buf
+	*w.toBuf = w.buf[:len(w.buf):len(w.buf)]
 	w.buf = nil
 	return nil
 }
