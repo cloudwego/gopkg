@@ -99,8 +99,9 @@ func (r *BytesReader) Release(e error) error {
 }
 
 type BytesWriter struct {
-	buf   []byte
-	toBuf *[]byte
+	buf    []byte
+	oldBuf [][]byte
+	toBuf  *[]byte
 }
 
 // NewBytesWriter returns a new DefaultWriter that writes to buf[len(buf):cap(buf)].
@@ -132,8 +133,15 @@ func (w *BytesWriter) acquireSlow(n int) {
 		// reserve the length of len(w.buf) for copying data from the old buffer during flush
 		for ncap = cap(w.buf) * 2; ncap-len(w.buf) < n; ncap *= 2 {
 		}
+		deltaLen := len(w.buf)
+		if len(w.oldBuf) > 0 {
+			deltaLen -= len(w.oldBuf[len(w.oldBuf)-1])
+		}
+		if deltaLen > 0 {
+			w.oldBuf = append(w.oldBuf, w.buf)
+		}
 		nbuf := dirtmake.Bytes(ncap, ncap)
-		w.buf = nbuf[:copy(nbuf, w.buf)]
+		w.buf = nbuf[:len(w.buf)]
 	}
 }
 
@@ -164,7 +172,12 @@ func (w *BytesWriter) Flush() (err error) {
 		*w.toBuf = []byte{}
 		return nil
 	}
+	var offset int
+	for _, old := range w.oldBuf {
+		offset += copy(w.buf[offset:], old[offset:])
+	}
 	*w.toBuf = w.buf[:len(w.buf):len(w.buf)]
 	w.buf = nil
+	w.oldBuf = nil
 	return nil
 }
