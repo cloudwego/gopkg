@@ -396,8 +396,16 @@ func TestBytesWriter_MultipleFlush(t *testing.T) {
 	assert.Equal(t, "Hello", string(buf))
 
 	err = writer.Flush()
-	require.NoError(t, err)
-	assert.Equal(t, "", string(buf))
+	require.Error(t, err)
+	assert.Equal(t, "Hello", string(buf))
+
+	_, err = writer.Malloc(1)
+	require.Error(t, err)
+
+	_, err = writer.WriteBinary(make([]byte, 1))
+	require.Error(t, err)
+
+	require.Equal(t, 0, writer.WrittenLen())
 }
 
 // TestBytesWriter_AcquireSlowCoverage tests acquireSlow function branches

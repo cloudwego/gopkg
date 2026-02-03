@@ -20,7 +20,10 @@ import (
 	"github.com/bytedance/gopkg/lang/dirtmake"
 )
 
-var errNoRemainingData = errors.New("bufiox: no remaining data left")
+var (
+	errNoRemainingData = errors.New("bufiox: no remaining data left")
+	errAlreadyFlushed  = errors.New("bufiox: bytes writer already flushed")
+)
 
 var _ Reader = &BytesReader{}
 
@@ -102,6 +105,8 @@ type BytesWriter struct {
 	buf    []byte
 	oldBuf [][]byte
 	toBuf  *[]byte
+
+	flushed bool
 }
 
 // NewBytesWriter returns a new DefaultWriter that writes to buf[len(buf):cap(buf)].
@@ -146,6 +151,9 @@ func (w *BytesWriter) acquireSlow(n int) {
 }
 
 func (w *BytesWriter) Malloc(n int) (buf []byte, err error) {
+	if w.flushed {
+		return nil, errAlreadyFlushed
+	}
 	if n < 0 {
 		err = errNegativeCount
 		return
@@ -157,6 +165,9 @@ func (w *BytesWriter) Malloc(n int) (buf []byte, err error) {
 }
 
 func (w *BytesWriter) WriteBinary(bs []byte) (n int, err error) {
+	if w.flushed {
+		return 0, errAlreadyFlushed
+	}
 	w.acquire(len(bs))
 	n = copy(w.buf[len(w.buf):cap(w.buf)], bs)
 	w.buf = w.buf[:len(w.buf)+n]
@@ -168,6 +179,10 @@ func (w *BytesWriter) WrittenLen() int {
 }
 
 func (w *BytesWriter) Flush() (err error) {
+	if w.flushed {
+		return errAlreadyFlushed
+	}
+	w.flushed = true
 	if len(w.buf) == 0 {
 		*w.toBuf = []byte{}
 		return nil
