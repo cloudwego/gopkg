@@ -45,7 +45,6 @@ type Reader interface {
 
 	// Release will free the buffer. After release, buffer read by Next/Skip/Peek is invalid.
 	// Param e is used when the buffer release depend on error.
-	// For example, usually the write buffer will be released inside flush,
-	// but if flush error happen, write buffer may need to be released explicitly.
+	// Release does not close and release the underlying connection, but only releases the user mode buffer that has been read.
 	Release(e error) (err error)
 }
