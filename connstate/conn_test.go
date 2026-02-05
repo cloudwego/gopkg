@@ -61,6 +61,147 @@ func TestListenConnState(t *testing.T) {
 	assert.Equal(t, StateClosed, stater.State())
 }
 
+// TestOnRemoteClosed tests that the OnRemoteClosed callback is invoked
+// when the remote side closes the connection.
+func TestOnRemoteClosed(t *testing.T) {
+	ln, err := net.Listen("tcp", "localhost:0")
+	if err != nil {
+		panic(err)
+	}
+
+	// Server: accept connection, read data, then close
+	go func() {
+		conn, err := ln.Accept()
+		assert.Nil(t, err)
+		buf := make([]byte, 11)
+		_, err = conn.Read(buf)
+		assert.Nil(t, err)
+		conn.Close()
+	}()
+
+	// Client: connect and listen for remote close
+	conn, err := net.Dial("tcp", ln.Addr().String())
+	assert.Nil(t, err)
+
+	var callbackCalled bool
+	var callbackMutex sync.Mutex
+	stater, err := ListenConnState(conn, WithOnRemoteClosed(func() {
+		callbackMutex.Lock()
+		callbackCalled = true
+		callbackMutex.Unlock()
+	}))
+	assert.Nil(t, err)
+	assert.Equal(t, StateOK, stater.State())
+
+	// Send data to server
+	_, err = conn.Write([]byte("hello world"))
+	assert.Nil(t, err)
+
+	// Wait for server to close
+	buf := make([]byte, 1)
+	_, err = conn.Read(buf)
+	assert.Equal(t, io.EOF, err)
+
+	// Wait for poller to detect the close and invoke callback
+	time.Sleep(200 * time.Millisecond)
+
+	callbackMutex.Lock()
+	assert.True(t, callbackCalled, "OnRemoteClosed callback should be invoked")
+	callbackMutex.Unlock()
+
+	assert.Equal(t, StateRemoteClosed, stater.State())
+	assert.Nil(t, stater.Close())
+	assert.Nil(t, conn.Close())
+}
+
+// TestOnRemoteClosed_NotCalled tests that the OnRemoteClosed callback
+// is NOT invoked when the connection is closed locally.
+func TestOnRemoteClosed_NotCalled(t *testing.T) {
+	ln, err := net.Listen("tcp", "localhost:0")
+	if err != nil {
+		panic(err)
+	}
+
+	go func() {
+		conn, err := ln.Accept()
+		assert.Nil(t, err)
+		buf := make([]byte, 11)
+		_, err = conn.Read(buf)
+		assert.Nil(t, err)
+		// Keep server connection open
+		time.Sleep(1 * time.Second)
+		conn.Close()
+	}()
+
+	conn, err := net.Dial("tcp", ln.Addr().String())
+	assert.Nil(t, err)
+
+	var callbackCalled bool
+	var callbackMutex sync.Mutex
+	stater, err := ListenConnState(conn, WithOnRemoteClosed(func() {
+		callbackMutex.Lock()
+		callbackCalled = true
+		callbackMutex.Unlock()
+	}))
+	assert.Nil(t, err)
+	assert.Equal(t, StateOK, stater.State())
+
+	_, err = conn.Write([]byte("hello world"))
+	assert.Nil(t, err)
+
+	// Close locally before server closes
+	time.Sleep(50 * time.Millisecond)
+	stater.Close()
+	conn.Close()
+
+	// Wait a bit to ensure callback wasn't called
+	time.Sleep(100 * time.Millisecond)
+
+	callbackMutex.Lock()
+	assert.False(t, callbackCalled, "OnRemoteClosed callback should NOT be invoked on local close")
+	callbackMutex.Unlock()
+
+	assert.Equal(t, StateClosed, stater.State())
+}
+
+// TestOnRemoteClosed_Nil tests that nil callback is handled correctly.
+func TestOnRemoteClosed_Nil(t *testing.T) {
+	ln, err := net.Listen("tcp", "localhost:0")
+	if err != nil {
+		panic(err)
+	}
+
+	go func() {
+		conn, err := ln.Accept()
+		assert.Nil(t, err)
+		buf := make([]byte, 11)
+		_, err = conn.Read(buf)
+		assert.Nil(t, err)
+		conn.Close()
+	}()
+
+	conn, err := net.Dial("tcp", ln.Addr().String())
+	assert.Nil(t, err)
+
+	// Pass nil callback - should not panic
+	stater, err := ListenConnState(conn, WithOnRemoteClosed(nil))
+	assert.Nil(t, err)
+	assert.Equal(t, StateOK, stater.State())
+
+	_, err = conn.Write([]byte("hello world"))
+	assert.Nil(t, err)
+
+	buf := make([]byte, 1)
+	_, err = conn.Read(buf)
+	assert.Equal(t, io.EOF, err)
+
+	time.Sleep(100 * time.Millisecond)
+	assert.Equal(t, StateRemoteClosed, stater.State())
+
+	assert.Nil(t, stater.Close())
+	assert.Nil(t, conn.Close())
+}
+
 type mockPoller struct {
 	controlFunc func(fd *fdOperator, op op) error
 }

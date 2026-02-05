@@ -47,14 +47,27 @@ func (p *kqueue) wait() error {
 		if n <= 0 {
 			time.Sleep(10 * time.Millisecond) // avoid busy loop
 		} else {
+			var cbs []OnRemoteClosed
 			for i := 0; i < n; i++ {
 				ev := &events[i]
 				op := *(**fdOperator)(unsafe.Pointer(&ev.Udata))
 				if conn := (*connStater)(atomic.LoadPointer(&op.conn)); conn != nil {
 					if ev.Flags&(syscall.EV_EOF) != 0 {
-						atomic.CompareAndSwapUint32(&conn.state, uint32(StateOK), uint32(StateRemoteClosed))
+						if atomic.CompareAndSwapUint32(&conn.state, uint32(StateOK), uint32(StateRemoteClosed)) {
+							if conn.onRemoteClosed != nil {
+								cbs = append(cbs, conn.onRemoteClosed)
+							}
+						}
 					}
 				}
+			}
+			// execute close callbacks on single goroutine.
+			if len(cbs) > 0 {
+				go func(cbs []OnRemoteClosed) {
+					for _, cb := range cbs {
+						cb()
+					}
+				}(cbs)
 			}
 		}
 		// we can make sure that there is no op remaining if finished handling all events
