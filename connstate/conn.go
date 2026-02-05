@@ -40,10 +40,24 @@ type ConnStater interface {
 	State() ConnState
 }
 
+type Option func(stater *connStater)
+
+// OnRemoteClosed is a callback function type that will be invoked
+// when the remote side of the connection is closed.
+type OnRemoteClosed func()
+
+// WithOnRemoteClosed sets a callback function that will be called when
+// the remote side closes the connection. The callback is invoked only once,
+// when the state transitions from StateOK to StateRemoteClosed.
+func WithOnRemoteClosed(fn OnRemoteClosed) Option {
+	return func(stater *connStater) {
+		stater.onRemoteClosed = fn
+	}
+}
+
 // ListenConnState returns a ConnStater for the given connection.
-// It's generally used for availability checks when obtaining connections from a connection pool.
 // Conn must be a syscall.Conn.
-func ListenConnState(conn net.Conn) (ConnStater, error) {
+func ListenConnState(conn net.Conn, opts ...Option) (ConnStater, error) {
 	pollInitOnce.Do(createPoller)
 	sysConn, ok := conn.(syscall.Conn)
 	if !ok {
@@ -58,7 +72,11 @@ func ListenConnState(conn net.Conn) (ConnStater, error) {
 	err = rawConn.Control(func(fileDescriptor uintptr) {
 		fd = pollcache.alloc()
 		fd.fd = int(fileDescriptor)
-		atomic.StorePointer(&fd.conn, unsafe.Pointer(&connStater{fd: unsafe.Pointer(fd)}))
+		cs := &connStater{fd: unsafe.Pointer(fd)}
+		for _, opt := range opts {
+			opt(cs)
+		}
+		atomic.StorePointer(&fd.conn, unsafe.Pointer(cs))
 		opAddErr = poll.control(fd, opAdd)
 	})
 	if fd != nil {
@@ -85,6 +103,8 @@ func ListenConnState(conn net.Conn) (ConnStater, error) {
 type connStater struct {
 	fd    unsafe.Pointer // *fdOperator
 	state uint32
+
+	onRemoteClosed OnRemoteClosed
 }
 
 func (c *connStater) Close() error {
