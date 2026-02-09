@@ -396,16 +396,93 @@ func TestBytesWriter_MultipleFlush(t *testing.T) {
 	assert.Equal(t, "Hello", string(buf))
 
 	err = writer.Flush()
-	require.Error(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, "Hello", string(buf))
 
-	_, err = writer.Malloc(1)
-	require.Error(t, err)
+	m, err := writer.Malloc(1)
+	require.NoError(t, err)
+	m[0] = '!'
 
-	_, err = writer.WriteBinary(make([]byte, 1))
-	require.Error(t, err)
+	err = writer.Flush()
+	require.NoError(t, err)
+	assert.Equal(t, "Hello!", string(buf))
+}
 
-	require.Equal(t, 0, writer.WrittenLen())
+func TestBytesWriter_PreExistingData(t *testing.T) {
+	t.Run("UseExistingCap", func(t *testing.T) {
+		buf := make([]byte, 5, 100)
+		copy(buf, "Hello")
+		w := NewBytesWriter(&buf)
+		assert.Equal(t, 0, w.WrittenLen())
+
+		_, err := w.WriteBinary([]byte("World"))
+		require.NoError(t, err)
+
+		err = w.Flush()
+		require.NoError(t, err)
+		assert.Equal(t, "HelloWorld", string(buf))
+	})
+
+	t.Run("GrowPreservesData", func(t *testing.T) {
+		buf := make([]byte, 5, 10)
+		copy(buf, "Hello")
+		w := NewBytesWriter(&buf)
+
+		m, err := w.Malloc(20)
+		require.NoError(t, err)
+		copy(m, "WorldAndMoreStuff!!!")
+
+		err = w.Flush()
+		require.NoError(t, err)
+		assert.Equal(t, "HelloWorldAndMoreStuff!!!", string(buf))
+	})
+
+	t.Run("MallocDeferredCopy", func(t *testing.T) {
+		buf := make([]byte, 5, 10)
+		copy(buf, "Hello")
+		w := NewBytesWriter(&buf)
+
+		// m1 within existing cap
+		m1, _ := w.Malloc(3)
+
+		// m2 triggers grow; m1 now points to oldBuf
+		m2, _ := w.Malloc(20)
+
+		// write AFTER grow to verify deferred copy
+		copy(m1, "AB!")
+		copy(m2, "CDE_extra_data_here!")
+
+		err := w.Flush()
+		require.NoError(t, err)
+		assert.Equal(t, "HelloAB!CDE_extra_data_here!", string(buf))
+	})
+}
+
+func TestBytesWriter_FlushGrowFlush(t *testing.T) {
+	var buf []byte
+	w := NewBytesWriter(&buf)
+
+	// first write + flush
+	_, err := w.WriteBinary([]byte("Hello"))
+	require.NoError(t, err)
+	err = w.Flush()
+	require.NoError(t, err)
+	assert.Equal(t, "Hello", string(buf))
+
+	// write enough to trigger acquireSlow (defaultBufSize = 8KB)
+	big := make([]byte, 16*1024)
+	for i := range big {
+		big[i] = 'X'
+	}
+	_, err = w.WriteBinary(big)
+	require.NoError(t, err)
+
+	// second flush must reconstruct pre-flush data via oldBuf
+	err = w.Flush()
+	require.NoError(t, err)
+
+	want := "Hello" + string(big)
+	assert.Equal(t, want, string(buf))
 }
 
 // TestBytesWriter_AcquireSlowCoverage tests acquireSlow function branches
