@@ -53,25 +53,15 @@ func NewDefaultReader(rd io.Reader) *DefaultReader {
 	return r
 }
 
-// read data to buf[len:cap] until len(buf) >= expectedLen, returns the new buffer length and any err encountered.
-func (r *DefaultReader) readExpected(buf []byte, expectedLen int) (int, error) {
-	for i := 0; i < maxConsecutiveEmptyReads; i++ {
-		m, err := r.rd.Read(buf[len(buf):cap(buf)])
-		buf = buf[:len(buf)+m]
-		if err != nil {
-			return len(buf), err
-		}
-		if expectedLen <= len(buf) {
-			return len(buf), nil
-		}
-	}
-	return len(buf), io.ErrNoProgress
+// Buffered returns the number of bytes that can be read from the current buffer.
+func (r *DefaultReader) Buffered() int {
+	return len(r.buf) - r.ri
 }
 
-// fill reads a new chunk into the buffer.
-func (r *DefaultReader) acquire(n int, skip bool) int {
+// acquire reads data into the buffer ensuring at least n bytes are available from r.ri.
+func (r *DefaultReader) acquire(n int) error {
 	if r.err != nil {
-		return len(r.buf) - r.ri
+		return r.err
 	}
 
 	if n > cap(r.buf)-r.ri {
@@ -83,7 +73,7 @@ func (r *DefaultReader) acquire(n int, skip bool) int {
 		for ; size < n; size *= 2 {
 		}
 		buf := mcache.Malloc(size)
-		if !skip && len(r.buf)-r.ri > 0 {
+		if len(r.buf)-r.ri > 0 {
 			// copy remaining data
 			copy(buf, r.buf[r.ri:])
 		}
@@ -96,10 +86,14 @@ func (r *DefaultReader) acquire(n int, skip bool) int {
 		r.ri = 0
 	}
 
+	need := n - r.Buffered()
+	if need <= 0 {
+		panic("[BUG] acquire with enough buffer")
+	}
 	var nl int
-	nl, r.err = r.readExpected(r.buf[r.ri:], n)
-	r.buf = r.buf[:r.ri+nl]
-	return nl
+	nl, r.err = readAtLeast(r.rd, r.buf[len(r.buf):cap(r.buf)], need)
+	r.buf = r.buf[:len(r.buf)+nl]
+	return r.err
 }
 
 func (r *DefaultReader) Next(n int) (buf []byte, err error) {
@@ -107,10 +101,8 @@ func (r *DefaultReader) Next(n int) (buf []byte, err error) {
 		err = errNegativeCount
 		return
 	}
-	if n > len(r.buf)-r.ri {
-		m := r.acquire(n, false)
-		if n > m {
-			err = r.err
+	if n > r.Buffered() {
+		if err = r.acquire(n); err != nil {
 			return
 		}
 	}
@@ -121,15 +113,40 @@ func (r *DefaultReader) Next(n int) (buf []byte, err error) {
 	return
 }
 
+func readAtLeast(r io.Reader, buf []byte, min int) (n int, err error) {
+	if len(buf) < min {
+		return 0, io.ErrShortBuffer
+	}
+	emptyRead := 0
+	for n < min && err == nil {
+		var nn int
+		nn, err = r.Read(buf[n:])
+		n += nn
+		if nn > 0 {
+			emptyRead = 0
+			continue
+		}
+		emptyRead++
+		if emptyRead > maxConsecutiveEmptyReads {
+			err = io.ErrNoProgress
+			return
+		}
+	}
+	if n >= min {
+		err = nil
+	} else if n > 0 && err == io.EOF {
+		err = io.ErrUnexpectedEOF
+	}
+	return
+}
+
 func (r *DefaultReader) Peek(n int) (buf []byte, err error) {
 	if n < 0 {
 		err = errNegativeCount
 		return
 	}
-	if n > len(r.buf)-r.ri {
-		m := r.acquire(n, false)
-		if n > m {
-			err = r.err
+	if n > r.Buffered() {
+		if err = r.acquire(n); err != nil {
 			return
 		}
 	}
@@ -143,10 +160,13 @@ func (r *DefaultReader) Skip(n int) (err error) {
 		err = errNegativeCount
 		return
 	}
-	if n > len(r.buf)-r.ri {
-		m := r.acquire(n, true)
-		if n > m {
-			err = r.err
+	if bufn := r.Buffered(); n > bufn {
+		// advance past buffered data; acquire will allocate fresh space
+		// without overwriting data before r.ri that user may reference
+		r.ri += bufn
+		r.rn += bufn
+		n -= bufn
+		if err = r.acquire(n); err != nil {
 			return
 		}
 	}
@@ -167,19 +187,21 @@ func (r *DefaultReader) ReadBinary(bs []byte) (n int, err error) {
 	}
 	n = copy(bs, r.buf[r.ri:])
 	r.ri += n
-	if len(bs) > n {
-		if len(bs)-n >= directlyReadThreshold {
+	if need := len(bs) - n; need > 0 {
+		if need >= directlyReadThreshold {
 			// If the data outside the buffer is greater than the threshold,
 			// directly call Read to reducing copying overhead.
-			n, r.err = r.readExpected(bs[:n:len(bs)], len(bs))
+			var nn int
+			nn, r.err = readAtLeast(r.rd, bs[n:], need)
+			n += nn
+			err = r.err
 		} else {
-			r.acquire(len(bs)-n, false)
+			err = r.acquire(need)
 			m := copy(bs[n:], r.buf[r.ri:])
 			r.ri += m
-			n = n + m
+			n += m
 		}
 		r.rn += n
-		err = r.err
 		return
 	}
 	r.rn += n
@@ -204,7 +226,9 @@ func (r *DefaultReader) Read(bs []byte) (n int, err error) {
 		// directly call Read to reducing copying overhead.
 		n, r.err = r.rd.Read(bs)
 	} else {
-		r.acquire(1, false) // try read 1 byte
+		if err = r.acquire(1); err != nil {
+			return
+		}
 		n = copy(bs, r.buf[r.ri:])
 		r.ri += n
 	}
