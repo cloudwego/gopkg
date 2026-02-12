@@ -16,13 +16,13 @@ package bufiox
 
 import (
 	"errors"
+	"math/bits"
 
 	"github.com/bytedance/gopkg/lang/dirtmake"
 )
 
 var (
 	errNoRemainingData = errors.New("bufiox: no remaining data left")
-	errAlreadyFlushed  = errors.New("bufiox: bytes writer already flushed")
 )
 
 var _ Reader = &BytesReader{}
@@ -101,18 +101,28 @@ func (r *BytesReader) Release(e error) error {
 	return nil
 }
 
+// BytesWriter implements Writer and builds a []byte result.
+//
+// It uses a deferred-copy scheme to avoid copying on buffer growth:
+// when the buffer needs to grow, the old buffer is saved to oldBuf and
+// a new buffer is allocated WITHOUT copying the old data. Slices returned
+// by Malloc still point into the old buffer's backing array, so writes
+// to them remain valid. At Flush time, data is reconstructed by copying
+// each oldBuf entry's delta into the final buffer.
+//
+// BytesWriter can be flushed multiple times; each Flush outputs the
+// accumulated data (including pre-existing data) and resets WrittenLen to 0.
 type BytesWriter struct {
-	buf    []byte
-	oldBuf [][]byte
-	toBuf  *[]byte
-
-	flushed bool
+	wn     int      // bytes written since last Flush
+	buf    []byte   // current write buffer; buf[:len(buf)] is the logical data
+	oldBuf [][]byte // snapshots of buf before each grow, for deferred copy
+	toBuf  *[]byte  // output destination, set by Flush
 }
 
-// NewBytesWriter returns a new DefaultWriter that writes to buf[len(buf):cap(buf)].
-// The WrittenLen is set to len(buf) before the first write.
+// NewBytesWriter returns a new BytesWriter that appends to buf[len(buf):cap(buf)].
+// Existing data in buf[:len(buf)] is preserved.
 func NewBytesWriter(buf *[]byte) *BytesWriter {
-	w := &BytesWriter{toBuf: buf}
+	w := &BytesWriter{toBuf: buf, buf: *buf}
 	return w
 }
 
@@ -125,35 +135,27 @@ func (w *BytesWriter) acquire(n int) {
 }
 
 func (w *BytesWriter) acquireSlow(n int) {
-	if cap(w.buf) == 0 {
-		maxSize := defaultBufSize
-		for ; maxSize < n; maxSize *= 2 {
-		}
-		w.buf = dirtmake.Bytes(0, maxSize)
+	need := len(w.buf) + n
+	ncap := 1 << bits.Len(uint(need-1)) // smallest power of 2 >= need
+	if ncap < defaultBufSize {
+		ncap = defaultBufSize
 	}
-
-	if n > cap(w.buf)-len(w.buf) {
-		// grow buffer
-		var ncap int
-		// reserve the length of len(w.buf) for copying data from the old buffer during flush
-		for ncap = cap(w.buf) * 2; ncap-len(w.buf) < n; ncap *= 2 {
-		}
-		deltaLen := len(w.buf)
-		if len(w.oldBuf) > 0 {
-			deltaLen -= len(w.oldBuf[len(w.oldBuf)-1])
-		}
-		if deltaLen > 0 {
-			w.oldBuf = append(w.oldBuf, w.buf)
-		}
-		nbuf := dirtmake.Bytes(ncap, ncap)
-		w.buf = nbuf[:len(w.buf)]
+	// deltaLen is the number of new bytes in w.buf since the last snapshot.
+	// If positive, w.buf has data that must be preserved via deferred copy.
+	deltaLen := len(w.buf)
+	if len(w.oldBuf) > 0 {
+		deltaLen -= len(w.oldBuf[len(w.oldBuf)-1])
 	}
+	if deltaLen > 0 {
+		w.oldBuf = append(w.oldBuf, w.buf)
+	}
+	// Allocate new buffer, set len to preserve the logical data length.
+	// The region [0:len] is dirty and will be reconstructed from oldBuf at Flush.
+	nbuf := dirtmake.Bytes(ncap, ncap)
+	w.buf = nbuf[:len(w.buf)]
 }
 
 func (w *BytesWriter) Malloc(n int) (buf []byte, err error) {
-	if w.flushed {
-		return nil, errAlreadyFlushed
-	}
 	if n < 0 {
 		err = errNegativeCount
 		return
@@ -161,38 +163,29 @@ func (w *BytesWriter) Malloc(n int) (buf []byte, err error) {
 	w.acquire(n)
 	buf = w.buf[len(w.buf) : len(w.buf)+n]
 	w.buf = w.buf[:len(w.buf)+n]
+	w.wn += n
 	return
 }
 
 func (w *BytesWriter) WriteBinary(bs []byte) (n int, err error) {
-	if w.flushed {
-		return 0, errAlreadyFlushed
-	}
 	w.acquire(len(bs))
 	n = copy(w.buf[len(w.buf):cap(w.buf)], bs)
 	w.buf = w.buf[:len(w.buf)+n]
+	w.wn += n
 	return
 }
 
 func (w *BytesWriter) WrittenLen() int {
-	return len(w.buf)
+	return w.wn
 }
 
 func (w *BytesWriter) Flush() (err error) {
-	if w.flushed {
-		return errAlreadyFlushed
-	}
-	w.flushed = true
-	if len(w.buf) == 0 {
-		*w.toBuf = []byte{}
-		return nil
-	}
 	var offset int
 	for _, old := range w.oldBuf {
 		offset += copy(w.buf[offset:], old[offset:])
 	}
 	*w.toBuf = w.buf[:len(w.buf):len(w.buf)]
-	w.buf = nil
 	w.oldBuf = nil
+	w.wn = 0
 	return nil
 }
