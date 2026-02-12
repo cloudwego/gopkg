@@ -48,3 +48,25 @@ type Reader interface {
 	// Release does not close and release the underlying connection, but only releases the user mode buffer that has been read.
 	Release(e error) (err error)
 }
+
+// Writer is a buffer IO interface, which provides a user-space zero-copy method to reduce memory allocation and copy overhead.
+type Writer interface {
+	// Malloc returns a shallow copy of the write buffer with length n,
+	// otherwise returns an error if it's unable to get n bytes from the write buffer.
+	// Must ensure that the data written by the user to buf can be flushed to the underlying io.Writer.
+	//
+	// Caller cannot write data to the returned buf after calling Flush.
+	Malloc(n int) (buf []byte, err error)
+
+	// WriteBinary writes bs to the buffer, it may be a zero copy write.
+	// MUST ensure that bs is not being concurrently written before calling Flush.
+	// It returns err if n < len(bs), while n is the number of bytes written.
+	WriteBinary(bs []byte) (n int, err error)
+
+	// WrittenLen returns the total length of the buffer written.
+	// Malloc / WriteBinary will increase the length. When the Flush function is called, WrittenLen is set to 0.
+	WrittenLen() (length int)
+
+	// Flush writes any malloc data to the underlying io.Writer, and reset WrittenLen to zero.
+	Flush() (err error)
+}

@@ -363,6 +363,203 @@ func TestDefaultWriter_MemoryLeaks(t *testing.T) {
 	})
 }
 
+func TestDefaultReader_Skip(t *testing.T) {
+	t.Run("Negative", func(t *testing.T) {
+		r := NewDefaultReader(bytes.NewReader(seqBytes(10)))
+		assert.Equal(t, errNegativeCount, r.Skip(-1))
+	})
+
+	t.Run("Zero", func(t *testing.T) {
+		r := NewDefaultReader(bytes.NewReader(seqBytes(10)))
+		require.NoError(t, r.Skip(0))
+		assert.Equal(t, 0, r.ReadLen())
+	})
+
+	t.Run("WithinBuffer", func(t *testing.T) {
+		r := NewDefaultReader(bytes.NewReader(seqBytes(100)))
+		_, err := r.Peek(1) // fill buffer
+		require.NoError(t, err)
+
+		require.NoError(t, r.Skip(10))
+		assert.Equal(t, 10, r.ReadLen())
+		// verify skip landed at correct position
+		buf, err := r.Peek(3)
+		require.NoError(t, err)
+		assert.Equal(t, seqBytes(13)[10:], buf)
+	})
+
+	t.Run("BeyondBuffer", func(t *testing.T) {
+		data := seqBytes(defaultBufSize + 100)
+		r := NewDefaultReader(bytes.NewReader(data))
+
+		// consume most of buffer, leaving 10 bytes
+		_, err := r.Next(defaultBufSize - 10)
+		require.NoError(t, err)
+
+		// skip past buffer end: 10 buffered + 50 from reader
+		require.NoError(t, r.Skip(60))
+		// verify position: defaultBufSize-10 + 60
+		buf, err := r.Peek(5)
+		require.NoError(t, err)
+		assert.Equal(t, data[defaultBufSize+50:defaultBufSize+55], buf)
+	})
+
+	t.Run("CrossRealloc", func(t *testing.T) {
+		data := seqBytes(defaultBufSize * 3)
+		r := NewDefaultReader(bytes.NewReader(data))
+
+		// skip more than entire buffer capacity
+		require.NoError(t, r.Skip(defaultBufSize+100))
+		buf, err := r.Peek(5)
+		require.NoError(t, err)
+		assert.Equal(t, data[defaultBufSize+100:defaultBufSize+105], buf)
+	})
+
+	t.Run("PreservesNextData", func(t *testing.T) {
+		data := seqBytes(defaultBufSize + 100)
+		r := NewDefaultReader(bytes.NewReader(data))
+
+		// hold a reference from Next
+		got, err := r.Next(10)
+		require.NoError(t, err)
+		want := make([]byte, 10)
+		copy(want, data[:10])
+
+		// skip beyond buffer, must not corrupt got
+		require.NoError(t, r.Skip(defaultBufSize))
+		assert.Equal(t, want, got)
+	})
+
+	t.Run("EOF", func(t *testing.T) {
+		r := NewDefaultReader(bytes.NewReader(seqBytes(10)))
+		assert.Error(t, r.Skip(20))
+	})
+}
+
+func seqBytes(n int) []byte {
+	b := make([]byte, n)
+	for i := range b {
+		b[i] = byte(i)
+	}
+	return b
+}
+
+func TestDefaultReader_ReadBinary(t *testing.T) {
+	t.Run("FromBuffer", func(t *testing.T) {
+		r := NewDefaultReader(bytes.NewReader(seqBytes(100)))
+		// pre-fill buffer
+		_, err := r.Peek(1)
+		require.NoError(t, err)
+
+		bs := make([]byte, 10)
+		n, err := r.ReadBinary(bs)
+		require.NoError(t, err)
+		assert.Equal(t, 10, n)
+		assert.Equal(t, seqBytes(10), bs)
+	})
+
+	t.Run("SmallAcquire", func(t *testing.T) {
+		// data smaller than directlyReadThreshold, triggers acquire path
+		data := seqBytes(defaultBufSize + 100)
+		r := NewDefaultReader(bytes.NewReader(data))
+
+		// consume most of the buffer
+		_, err := r.Next(defaultBufSize - 10)
+		require.NoError(t, err)
+
+		// need 100 bytes: 10 from buffer + 90 via acquire
+		bs := make([]byte, 100)
+		n, err := r.ReadBinary(bs)
+		require.NoError(t, err)
+		assert.Equal(t, 100, n)
+		assert.Equal(t, data[defaultBufSize-10:defaultBufSize+90], bs)
+	})
+
+	t.Run("DirectRead", func(t *testing.T) {
+		// remainder >= directlyReadThreshold, triggers direct readAtLeast
+		data := seqBytes(defaultBufSize + directlyReadThreshold)
+		r := NewDefaultReader(bytes.NewReader(data))
+
+		// consume entire buffer
+		_, err := r.Next(defaultBufSize)
+		require.NoError(t, err)
+
+		bs := make([]byte, directlyReadThreshold)
+		n, err := r.ReadBinary(bs)
+		require.NoError(t, err)
+		assert.Equal(t, directlyReadThreshold, n)
+		assert.Equal(t, data[defaultBufSize:], bs)
+	})
+
+	t.Run("EOF", func(t *testing.T) {
+		r := NewDefaultReader(bytes.NewReader(seqBytes(5)))
+		bs := make([]byte, 10)
+		n, err := r.ReadBinary(bs)
+		assert.Error(t, err)
+		assert.Equal(t, 5, n)
+		assert.Equal(t, seqBytes(5), bs[:5])
+	})
+}
+
+func TestDefaultReader_Read(t *testing.T) {
+	t.Run("FromBuffer", func(t *testing.T) {
+		r := NewDefaultReader(bytes.NewReader(seqBytes(100)))
+		// pre-fill buffer
+		_, err := r.Peek(1)
+		require.NoError(t, err)
+
+		bs := make([]byte, 10)
+		n, err := r.Read(bs)
+		require.NoError(t, err)
+		assert.Equal(t, 10, n)
+		assert.Equal(t, seqBytes(10), bs)
+	})
+
+	t.Run("SmallAcquire", func(t *testing.T) {
+		// empty buffer + small read triggers acquire(1)
+		r := NewDefaultReader(bytes.NewReader(seqBytes(100)))
+
+		bs := make([]byte, 10)
+		n, err := r.Read(bs)
+		require.NoError(t, err)
+		assert.True(t, n > 0 && n <= 10)
+		assert.Equal(t, seqBytes(n), bs[:n])
+	})
+
+	t.Run("DirectRead", func(t *testing.T) {
+		// large bs >= directlyReadThreshold, triggers direct rd.Read
+		data := seqBytes(directlyReadThreshold + 100)
+		r := NewDefaultReader(bytes.NewReader(data))
+
+		bs := make([]byte, directlyReadThreshold)
+		n, err := r.Read(bs)
+		require.NoError(t, err)
+		assert.True(t, n > 0)
+		assert.Equal(t, data[:n], bs[:n])
+	})
+
+	t.Run("EOF", func(t *testing.T) {
+		r := NewDefaultReader(bytes.NewReader(seqBytes(3)))
+		// drain all data
+		_, err := r.Next(3)
+		require.NoError(t, err)
+
+		bs := make([]byte, 10)
+		n, err := r.Read(bs)
+		assert.Equal(t, io.EOF, err)
+		assert.Equal(t, 0, n)
+	})
+
+	t.Run("IOReader", func(t *testing.T) {
+		// verify Read satisfies io.Reader contract across multiple calls
+		data := seqBytes(200)
+		r := NewDefaultReader(bytes.NewReader(data))
+		got, err := io.ReadAll(r)
+		require.NoError(t, err)
+		assert.Equal(t, data, got)
+	})
+}
+
 // Helper types for testing
 type errorReader struct {
 	err error
