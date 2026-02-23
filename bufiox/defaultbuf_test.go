@@ -147,6 +147,16 @@ func TestDefaultReader_ErrorConditions(t *testing.T) {
 	})
 }
 
+func TestDefaultReader_PeekReturnsBufferedOnError(t *testing.T) {
+	data := []byte("Hello")
+	r := NewDefaultReader(bytes.NewReader(data))
+
+	// Peek more than available; should return buffered data + error
+	buf, err := r.Peek(10)
+	assert.Error(t, err)
+	assert.Equal(t, data, buf)
+}
+
 func TestDefaultReader_ReleaseAfterMultipleOperations(t *testing.T) {
 	// Perform many operations and release
 	data := make([]byte, 2048*20) // Increase data size to handle all operations
@@ -558,6 +568,25 @@ func TestDefaultReader_Read(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, data, got)
 	})
+}
+
+func TestDefaultWriter_FlushFreesToFreeOnError(t *testing.T) {
+	writeErr := errors.New("write error")
+	w := NewDefaultWriter(&errorWriter{err: writeErr})
+
+	// Malloc allocates an mcache buffer tracked in toFree
+	_, err := w.Malloc(10)
+	require.NoError(t, err)
+	assert.NotEmpty(t, w.toFree)
+
+	// Flush fails on WriteTo, but toFree must still be freed
+	err = w.Flush()
+	assert.Equal(t, writeErr, err)
+
+	// toFree should be drained even on error
+	for _, buf := range w.toFree {
+		assert.Nil(t, buf, "toFree buffer not freed after Flush error")
+	}
 }
 
 // Helper types for testing

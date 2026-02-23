@@ -147,6 +147,7 @@ func (r *DefaultReader) Peek(n int) (buf []byte, err error) {
 	}
 	if n > r.Buffered() {
 		if err = r.acquire(n); err != nil {
+			buf = r.buf[r.ri:]
 			return
 		}
 	}
@@ -255,6 +256,8 @@ func (r *DefaultReader) Release(e error) error {
 	}
 	r.maxSizeStats.update(r.rn)
 	r.rn = 0
+	// DO NOT reset the r.err, make sure the next call will return err instead
+	// r.err = nil
 	return nil
 }
 
@@ -361,9 +364,9 @@ func (w *DefaultWriter) Flush() (err error) {
 		return nil
 	}
 	// might call writev if w.wd is net.Conn
-	if _, err = w.chunks.WriteTo(w.wd); err != nil {
+	_, err = w.chunks.WriteTo(w.wd)
+	if err != nil {
 		w.err = err
-		return err
 	}
 	w.chunk = nil
 	for i := range w.chunks {
@@ -378,7 +381,7 @@ func (w *DefaultWriter) Flush() (err error) {
 		}
 		w.toFree = w.toFree[:0]
 	}
-	return nil
+	return err
 }
 
 const (
