@@ -392,57 +392,76 @@ func TestDefaultReader_Skip(t *testing.T) {
 
 		require.NoError(t, r.Skip(10))
 		assert.Equal(t, 10, r.ReadLen())
-		// verify skip landed at correct position
 		buf, err := r.Peek(3)
 		require.NoError(t, err)
 		assert.Equal(t, seqBytes(13)[10:], buf)
 	})
 
-	t.Run("BeyondBuffer", func(t *testing.T) {
-		data := seqBytes(defaultBufSize + 100)
+	t.Run("BeyondBufferRef", func(t *testing.T) {
+		// skip beyond buffer with ref=true: buffer pinned, old slices preserved
+		data := seqBytes(defaultBufSize * 4)
 		r := NewDefaultReader(bytes.NewReader(data))
 
-		// consume most of buffer, leaving 10 bytes
-		_, err := r.Next(defaultBufSize - 10)
-		require.NoError(t, err)
-
-		// skip past buffer end: 10 buffered + 50 from reader
-		require.NoError(t, r.Skip(60))
-		// verify position: defaultBufSize-10 + 60
-		buf, err := r.Peek(5)
-		require.NoError(t, err)
-		assert.Equal(t, data[defaultBufSize+50:defaultBufSize+55], buf)
-	})
-
-	t.Run("CrossRealloc", func(t *testing.T) {
-		data := seqBytes(defaultBufSize * 3)
-		r := NewDefaultReader(bytes.NewReader(data))
-
-		// skip more than entire buffer capacity
-		require.NoError(t, r.Skip(defaultBufSize+100))
-		buf, err := r.Peek(5)
-		require.NoError(t, err)
-		assert.Equal(t, data[defaultBufSize+100:defaultBufSize+105], buf)
-	})
-
-	t.Run("PreservesNextData", func(t *testing.T) {
-		data := seqBytes(defaultBufSize + 100)
-		r := NewDefaultReader(bytes.NewReader(data))
-
-		// hold a reference from Next
+		// Next sets ref=true
 		got, err := r.Next(10)
 		require.NoError(t, err)
 		want := make([]byte, 10)
 		copy(want, data[:10])
+		capBefore := cap(r.buf)
 
-		// skip beyond buffer, must not corrupt got
-		require.NoError(t, r.Skip(defaultBufSize))
+		// skip beyond buffer
+		skip := defaultBufSize + 100
+		require.NoError(t, r.Skip(skip))
+
+		// buffer pinned, not freed
+		assert.Equal(t, capBefore, cap(r.buf))
+		// old slice still valid
 		assert.Equal(t, want, got)
+
+		// verify stream position
+		pos := 10 + skip
+		buf, err := r.Peek(5)
+		require.NoError(t, err)
+		assert.Equal(t, data[pos:pos+5], buf)
+
+		// acquire after skip pins old buffer in toFree
+		require.NoError(t, r.Skip(r.Buffered()))
+		_, err = r.Next(10)
+		require.NoError(t, err)
+		assert.NotEmpty(t, r.toFree)
+	})
+
+	t.Run("BeyondBufferNoRef", func(t *testing.T) {
+		// skip beyond buffer with ref=false: buffer freed, toFree stays empty
+		data := seqBytes(defaultBufSize * 4)
+		r := NewDefaultReader(bytes.NewReader(data))
+
+		// ReadBinary fills buffer without setting ref
+		bs := make([]byte, 10)
+		_, err := r.ReadBinary(bs)
+		require.NoError(t, err)
+		assert.False(t, r.ref)
+
+		// skip beyond buffer: buf freed immediately
+		skip := defaultBufSize + 100
+		require.NoError(t, r.Skip(skip))
+		assert.Nil(t, r.buf)
+
+		// acquire after skip does not accumulate toFree
+		pos := 10 + skip
+		buf, err := r.Next(5)
+		require.NoError(t, err)
+		assert.Empty(t, r.toFree)
+		assert.Equal(t, data[pos:pos+5], buf)
 	})
 
 	t.Run("EOF", func(t *testing.T) {
 		r := NewDefaultReader(bytes.NewReader(seqBytes(10)))
 		assert.Error(t, r.Skip(20))
+
+		// EOF on skipReader path (skip exceeds buffer + reader data)
+		r = NewDefaultReader(bytes.NewReader(seqBytes(100)))
+		assert.Error(t, r.Skip(defaultBufSize+100))
 	})
 }
 

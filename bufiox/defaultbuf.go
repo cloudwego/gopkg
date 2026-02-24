@@ -29,6 +29,7 @@ var _ Reader = &DefaultReader{}
 type DefaultReader struct {
 	buf    []byte // buf[ri:] is the buffer for reading.
 	ri     int    // buf read positions
+	ref    bool   // Next/Peek returned a slice into buf
 	toFree [][]byte
 
 	rn int // read len
@@ -43,6 +44,7 @@ const (
 	defaultBufSize        = 8 * 1024
 	nocopyWriteThreshold  = 4 * 1024
 	directlyReadThreshold = 4 * 1024
+	skipBufSize           = 64 * 1024
 )
 
 var errNegativeCount = errors.New("bufiox: negative count")
@@ -78,12 +80,16 @@ func (r *DefaultReader) acquire(n int) error {
 			copy(buf, r.buf[r.ri:])
 		}
 		if cap(r.buf) > 0 {
-			// free stale buf
-			r.toFree = append(r.toFree, r.buf)
+			if r.ref {
+				r.toFree = append(r.toFree, r.buf)
+			} else {
+				mcache.Free(r.buf)
+			}
 		}
 		// set new buf
 		r.buf = buf[:len(r.buf)-r.ri]
 		r.ri = 0
+		r.ref = false
 	}
 
 	need := n - r.Buffered()
@@ -107,9 +113,12 @@ func (r *DefaultReader) Next(n int) (buf []byte, err error) {
 		}
 	}
 	// nocopy read
-	buf = r.buf[r.ri : r.ri+n]
+	buf = r.buf[r.ri : r.ri+n : r.ri+n]
 	r.ri += n
 	r.rn += n
+	if n > 0 {
+		r.ref = true
+	}
 	return
 }
 
@@ -147,12 +156,19 @@ func (r *DefaultReader) Peek(n int) (buf []byte, err error) {
 	}
 	if n > r.Buffered() {
 		if err = r.acquire(n); err != nil {
-			buf = r.buf[r.ri:]
+			end := len(r.buf)
+			buf = r.buf[r.ri:end:end]
+			if len(buf) > 0 {
+				r.ref = true
+			}
 			return
 		}
 	}
 	// nocopy read
-	buf = r.buf[r.ri : r.ri+n]
+	buf = r.buf[r.ri : r.ri+n : r.ri+n]
+	if n > 0 {
+		r.ref = true
+	}
 	return
 }
 
@@ -162,17 +178,55 @@ func (r *DefaultReader) Skip(n int) (err error) {
 		return
 	}
 	if bufn := r.Buffered(); n > bufn {
-		// advance past buffered data; acquire will allocate fresh space
-		// without overwriting data before r.ri that user may reference
 		r.ri += bufn
 		r.rn += bufn
 		n -= bufn
-		if err = r.acquire(n); err != nil {
-			return
+		if !r.ref && cap(r.buf) > 0 {
+			mcache.Free(r.buf)
+			r.buf = nil
+			r.ri = 0
 		}
+		var nn int
+		nn, r.err = skipReader(r.rd, n)
+		r.rn += nn
+		err = r.err
+		return
 	}
 	r.ri += n
 	r.rn += n
+	return
+}
+
+// skipReader reads and discards exactly n bytes from rd using a small scratch buffer.
+func skipReader(rd io.Reader, n int) (skipped int, err error) {
+	buf := mcache.Malloc(skipBufSize)
+	defer mcache.Free(buf)
+	var emptyRead int
+	for skipped < n {
+		sz := n - skipped
+		if sz > skipBufSize {
+			sz = skipBufSize
+		}
+		var nn int
+		nn, err = rd.Read(buf[:sz])
+		skipped += nn
+		if nn > 0 {
+			emptyRead = 0
+		} else {
+			emptyRead++
+			if emptyRead > maxConsecutiveEmptyReads {
+				return skipped, io.ErrNoProgress
+			}
+		}
+		if err != nil {
+			break
+		}
+	}
+	if skipped >= n {
+		err = nil
+	} else if skipped > 0 && err == io.EOF {
+		err = io.ErrUnexpectedEOF
+	}
 	return
 }
 
@@ -254,6 +308,7 @@ func (r *DefaultReader) Release(e error) error {
 		r.buf = nil
 		r.ri = 0
 	}
+	r.ref = false
 	r.maxSizeStats.update(r.rn)
 	r.rn = 0
 	// DO NOT reset the r.err, make sure the next call will return err instead
