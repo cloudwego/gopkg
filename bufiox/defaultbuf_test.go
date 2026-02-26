@@ -608,6 +608,32 @@ func TestDefaultWriter_FlushFreesToFreeOnError(t *testing.T) {
 	}
 }
 
+func TestNewDefaultReaderSize(t *testing.T) {
+	t.Run("CustomSize", func(t *testing.T) {
+		size := 32 * 1024
+		data := seqBytes(size)
+		r := NewDefaultReaderSize(bytes.NewReader(data), size)
+		assert.Equal(t, size, r.bufSize)
+
+		// first acquire should allocate at least the custom size
+		buf, err := r.Peek(1)
+		require.NoError(t, err)
+		assert.Equal(t, data[:1], buf)
+		assert.True(t, cap(r.buf) >= size)
+	})
+
+	t.Run("BelowDefault", func(t *testing.T) {
+		// size below default should be clamped to defaultBufSize
+		r := NewDefaultReaderSize(bytes.NewReader(seqBytes(10)), 16)
+		assert.Equal(t, defaultBufSize, r.bufSize)
+	})
+
+	t.Run("DefaultConstructor", func(t *testing.T) {
+		r := NewDefaultReader(bytes.NewReader(seqBytes(10)))
+		assert.Equal(t, defaultBufSize, r.bufSize)
+	})
+}
+
 // Helper types for testing
 type errorReader struct {
 	err error

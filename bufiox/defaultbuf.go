@@ -34,6 +34,8 @@ type DefaultReader struct {
 
 	rn int // read len
 
+	bufSize int // minimum buffer size for acquire
+
 	rd  io.Reader // reader provided by the client
 	err error
 
@@ -51,8 +53,16 @@ var errNegativeCount = errors.New("bufiox: negative count")
 
 // NewDefaultReader returns a new DefaultReader that reads from r.
 func NewDefaultReader(rd io.Reader) *DefaultReader {
-	r := &DefaultReader{rd: rd}
-	return r
+	return NewDefaultReaderSize(rd, defaultBufSize)
+}
+
+// NewDefaultReaderSize returns a new DefaultReader that reads from rd
+// with at least the specified buffer size.
+func NewDefaultReaderSize(rd io.Reader, size int) *DefaultReader {
+	if size < defaultBufSize {
+		size = defaultBufSize
+	}
+	return &DefaultReader{rd: rd, bufSize: size}
 }
 
 // Buffered returns the number of bytes that can be read from the current buffer.
@@ -69,8 +79,8 @@ func (r *DefaultReader) acquire(n int) error {
 	if n > cap(r.buf)-r.ri {
 		// calculate new size
 		size := r.maxSizeStats.maxSize()
-		if size < defaultBufSize {
-			size = defaultBufSize
+		if size < r.bufSize {
+			size = r.bufSize
 		}
 		for ; size < n; size *= 2 {
 		}
