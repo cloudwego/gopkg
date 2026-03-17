@@ -21,8 +21,7 @@ import (
 	"io"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/cloudwego/gopkg/internal/assert"
 )
 
 func TestApplicationException(t *testing.T) {
@@ -33,7 +32,7 @@ func TestApplicationException(t *testing.T) {
 
 	ex2 := NewApplicationException(0, "")
 	n, err := ex2.FastRead(b)
-	require.NoError(t, err)
+	assert.Nil(t, err)
 	assert.Equal(t, len(b), n)
 	assert.Equal(t, int32(1), ex2.TypeID())
 	assert.Equal(t, int32(1), ex2.TypeId())
@@ -50,7 +49,7 @@ func TestApplicationException(t *testing.T) {
 
 func TestProtocolException(t *testing.T) {
 	e := NewProtocolExceptionWithErr(io.EOF)
-	assert.ErrorIs(t, e, io.EOF) // will call errors.Is
+	assert.True(t, errors.Is(e, io.EOF)) // will call errors.Is
 	assert.True(t, e.Is(NewProtocolException(UNKNOWN_PROTOCOL_EXCEPTION, "EOF")))
 }
 
@@ -66,7 +65,7 @@ func TestPrependError(t *testing.T) {
 	ex0 := NewTransportException(1, "world")
 	err0 := PrependError("hello ", ex0)
 	ex0, ok = err0.(*TransportException)
-	require.True(t, ok)
+	assert.True(t, ok)
 	assert.Equal(t, int32(1), ex0.TypeID())
 	assert.Equal(t, "hello world", ex0.Error())
 
@@ -74,7 +73,7 @@ func TestPrependError(t *testing.T) {
 	ex1 := NewProtocolException(2, "world")
 	err1 := PrependError("hello ", ex1)
 	ex1, ok = err1.(*ProtocolException)
-	require.True(t, ok)
+	assert.True(t, ok)
 	assert.Equal(t, int32(2), ex1.TypeID())
 	assert.Equal(t, "hello world", ex1.Error())
 
@@ -82,7 +81,7 @@ func TestPrependError(t *testing.T) {
 	ex2 := NewApplicationException(3, "world")
 	err2 := PrependError("hello ", ex2)
 	ex2, ok = err2.(*ApplicationException)
-	require.True(t, ok)
+	assert.True(t, ok)
 	assert.Equal(t, int32(3), ex2.TypeID())
 	assert.Equal(t, "hello world", ex2.Error())
 
@@ -90,13 +89,13 @@ func TestPrependError(t *testing.T) {
 	ex3 := testTException{}
 	err3 := PrependError("hello ", ex3)
 	ex4, ok := err3.(*ApplicationException)
-	require.True(t, ok)
+	assert.True(t, ok)
 	assert.Equal(t, int32(-1), ex4.TypeID())
 	assert.Equal(t, "hello testTException", ex4.Error())
 
 	// case normal error
 	err4 := PrependError("hello ", errors.New("world"))
 	_, ok = err4.(tException)
-	require.False(t, ok)
+	assert.True(t, !ok)
 	assert.Equal(t, "hello world", err4.Error())
 }

@@ -22,7 +22,7 @@ import (
 	"testing"
 
 	"github.com/cloudwego/gopkg/bufiox"
-	"github.com/stretchr/testify/require"
+	"github.com/cloudwego/gopkg/internal/assert"
 )
 
 func TestSkipDecoder(t *testing.T) {
@@ -99,49 +99,49 @@ func TestSkipDecoder(t *testing.T) {
 	testNext := func(t *testing.T, r NextIface) {
 		readn := 0
 		b, err := r.Next(BYTE) // byte
-		require.NoError(t, err)
+		assert.Nil(t, err)
 		readn += len(b)
-		require.Equal(t, sz0, readn)
+		assert.Equal(t, sz0, readn)
 		b, err = r.Next(STRING) // string
-		require.NoError(t, err)
+		assert.Nil(t, err)
 		readn += len(b)
-		require.Equal(t, sz1, readn)
+		assert.Equal(t, sz1, readn)
 		b, err = r.Next(LIST) // list<i32>
-		require.NoError(t, err)
+		assert.Nil(t, err)
 		readn += len(b)
-		require.Equal(t, sz2, readn)
+		assert.Equal(t, sz2, readn)
 		b, err = r.Next(LIST) // list<string>
-		require.NoError(t, err)
+		assert.Nil(t, err)
 		readn += len(b)
-		require.Equal(t, sz3, readn)
+		assert.Equal(t, sz3, readn)
 		b, err = r.Next(LIST) // list<list<i32>>
-		require.NoError(t, err)
+		assert.Nil(t, err)
 		readn += len(b)
-		require.Equal(t, sz4, readn)
+		assert.Equal(t, sz4, readn)
 		b, err = r.Next(MAP) // map<i32, i64>
-		require.NoError(t, err)
+		assert.Nil(t, err)
 		readn += len(b)
-		require.Equal(t, sz5, readn)
+		assert.Equal(t, sz5, readn)
 		b, err = r.Next(MAP) // map<i32, string>
-		require.NoError(t, err)
+		assert.Nil(t, err)
 		readn += len(b)
-		require.Equal(t, sz6, readn)
+		assert.Equal(t, sz6, readn)
 		b, err = r.Next(MAP) // map<string, i64>
-		require.NoError(t, err)
+		assert.Nil(t, err)
 		readn += len(b)
-		require.Equal(t, sz7, readn)
+		assert.Equal(t, sz7, readn)
 		b, err = r.Next(MAP) // map<i32, list<i32>>
-		require.NoError(t, err)
+		assert.Nil(t, err)
 		readn += len(b)
-		require.Equal(t, sz8, readn)
+		assert.Equal(t, sz8, readn)
 		b, err = r.Next(MAP) // map<list<i32>, i32>
-		require.NoError(t, err)
+		assert.Nil(t, err)
 		readn += len(b)
-		require.Equal(t, sz9, readn)
+		assert.Equal(t, sz9, readn)
 		b, err = r.Next(STRUCT) // struct i32, list<i32>
-		require.NoError(t, err)
+		assert.Nil(t, err)
 		readn += len(b)
-		require.Equal(t, sz10, readn)
+		assert.Equal(t, sz10, readn)
 	}
 
 	t.Run("NewSkipDecoder", func(t *testing.T) {
@@ -170,11 +170,11 @@ func TestSkipDecoder(t *testing.T) {
 		}
 		r := NewSkipDecoder(bufiox.NewBytesReader(b))
 		_, err := r.Next(STRUCT)
-		require.Same(t, errDepthLimitExceeded, err)
+		assert.True(t, errDepthLimitExceeded == err)
 
 		// unknown type
 		_, err = r.Next(TType(122))
-		require.Error(t, err)
+		assert.True(t, err != nil)
 	}
 }
 

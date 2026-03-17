@@ -21,7 +21,7 @@ import (
 
 	"github.com/bytedance/gopkg/lang/dirtmake"
 	"github.com/cloudwego/gopkg/bufiox"
-	"github.com/stretchr/testify/require"
+	"github.com/cloudwego/gopkg/internal/assert"
 )
 
 const defaultBinaryWriterBufferSize = 4096
@@ -78,5 +78,5 @@ func TestBinaryWriter(t *testing.T) {
 	w.w.Flush()
 	w.Recycle()
 
-	require.Equal(t, b, buf)
+	assert.BytesEqual(t, b, buf)
 }

@@ -17,8 +17,7 @@ package bufiox
 import (
 	"testing"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/cloudwego/gopkg/internal/assert"
 )
 
 func TestBytesReader_BasicFunctionality(t *testing.T) {
@@ -26,31 +25,31 @@ func TestBytesReader_BasicFunctionality(t *testing.T) {
 	reader := NewBytesReader(data)
 
 	buf, err := reader.Next(5)
-	require.NoError(t, err)
-	assert.Equal(t, []byte("Hello"), buf)
+	assert.Nil(t, err)
+	assert.Equal(t, "Hello", string(buf))
 	assert.Equal(t, 5, reader.ReadLen())
 
 	peekBuf, err := reader.Peek(1)
-	require.NoError(t, err)
-	assert.Equal(t, []byte(","), peekBuf)
+	assert.Nil(t, err)
+	assert.Equal(t, ",", string(peekBuf))
 	assert.Equal(t, 5, reader.ReadLen())
 
 	err = reader.Skip(1)
-	require.NoError(t, err)
+	assert.Nil(t, err)
 	assert.Equal(t, 6, reader.ReadLen())
 
 	buf, err = reader.Next(6)
-	require.NoError(t, err)
-	assert.Equal(t, []byte(" Bytes"), buf)
+	assert.Nil(t, err)
+	assert.Equal(t, " Bytes", string(buf))
 
 	var binaryBuf [5]byte
 	n, err := reader.ReadBinary(binaryBuf[:])
-	require.NoError(t, err)
+	assert.Nil(t, err)
 	assert.Equal(t, 5, n)
-	assert.Equal(t, []byte("Reade"), binaryBuf[:])
+	assert.Equal(t, "Reade", string(binaryBuf[:]))
 
 	err = reader.Release(nil)
-	require.NoError(t, err)
+	assert.Nil(t, err)
 }
 
 func TestBytesReader_BoundaryConditions(t *testing.T) {
@@ -70,15 +69,15 @@ func TestBytesReader_BoundaryConditions(t *testing.T) {
 
 	t.Run("ZeroCount", func(t *testing.T) {
 		buf, err := reader.Next(0)
-		require.NoError(t, err)
+		assert.Nil(t, err)
 		assert.Equal(t, 0, len(buf))
 
 		buf, err = reader.Peek(0)
-		require.NoError(t, err)
+		assert.Nil(t, err)
 		assert.Equal(t, 0, len(buf))
 
 		err = reader.Skip(0)
-		require.NoError(t, err)
+		assert.Nil(t, err)
 	})
 
 	t.Run("EmptySlice", func(t *testing.T) {
@@ -95,7 +94,7 @@ func TestBytesReader_BoundaryConditions(t *testing.T) {
 		assert.Equal(t, errNoRemainingData, err)
 
 		n, err := emptyReader.ReadBinary(emptyBuf)
-		require.NoError(t, err)
+		assert.Nil(t, err)
 		assert.Equal(t, 0, n)
 	})
 
@@ -120,33 +119,33 @@ func TestBytesReader_AdvancedFunctionality(t *testing.T) {
 
 	t.Run("PeekAfterNext", func(t *testing.T) {
 		buf, err := reader.Next(3)
-		require.NoError(t, err)
-		assert.Equal(t, []byte("012"), buf)
+		assert.Nil(t, err)
+		assert.Equal(t, "012", string(buf))
 
 		peekBuf, err := reader.Peek(3)
-		require.NoError(t, err)
-		assert.Equal(t, []byte("345"), peekBuf)
+		assert.Nil(t, err)
+		assert.Equal(t, "345", string(peekBuf))
 
 		assert.Equal(t, 3, reader.ReadLen())
 
 		buf, err = reader.Next(3)
-		require.NoError(t, err)
-		assert.Equal(t, []byte("345"), buf)
+		assert.Nil(t, err)
+		assert.Equal(t, "345", string(buf))
 		assert.Equal(t, 6, reader.ReadLen())
 	})
 
 	t.Run("SkipAfterPeek", func(t *testing.T) {
 		peekBuf, err := reader.Peek(2)
-		require.NoError(t, err)
-		assert.Equal(t, []byte("67"), peekBuf)
+		assert.Nil(t, err)
+		assert.Equal(t, "67", string(peekBuf))
 
 		err = reader.Skip(2)
-		require.NoError(t, err)
+		assert.Nil(t, err)
 		assert.Equal(t, 8, reader.ReadLen())
 
 		buf, err := reader.Next(2)
-		require.NoError(t, err)
-		assert.Equal(t, []byte("89"), buf)
+		assert.Nil(t, err)
+		assert.Equal(t, "89", string(buf))
 		assert.Equal(t, 10, reader.ReadLen())
 	})
 
@@ -155,14 +154,14 @@ func TestBytesReader_AdvancedFunctionality(t *testing.T) {
 
 		var buf [5]byte
 		n, err := reader.ReadBinary(buf[:3])
-		require.NoError(t, err)
+		assert.Nil(t, err)
 		assert.Equal(t, 3, n)
-		assert.Equal(t, []byte("012"), buf[:3])
+		assert.Equal(t, "012", string(buf[:3]))
 
 		n, err = reader.ReadBinary(buf[:])
-		require.NoError(t, err)
+		assert.Nil(t, err)
 		assert.Equal(t, 5, n)
-		assert.Equal(t, []byte("34567"), buf[:])
+		assert.Equal(t, "34567", string(buf[:]))
 	})
 }
 
@@ -172,18 +171,18 @@ func TestBytesWriter_BasicFunctionality(t *testing.T) {
 	writer := NewBytesWriter(&buf)
 
 	mallocBuf, err := writer.Malloc(10)
-	require.NoError(t, err)
+	assert.Nil(t, err)
 	assert.Equal(t, 10, len(mallocBuf))
 	copy(mallocBuf, []byte("0123456789"))
 	assert.Equal(t, 10, writer.WrittenLen())
 
 	n, err := writer.WriteBinary([]byte("Hello"))
-	require.NoError(t, err)
+	assert.Nil(t, err)
 	assert.Equal(t, 5, n)
 	assert.Equal(t, 15, writer.WrittenLen())
 
 	err = writer.Flush()
-	require.NoError(t, err)
+	assert.Nil(t, err)
 	assert.Equal(t, 0, writer.WrittenLen())
 	assert.Equal(t, "0123456789Hello", string(buf))
 }
@@ -200,7 +199,7 @@ func TestBytesWriter_BoundaryConditions(t *testing.T) {
 
 	t.Run("ZeroCount", func(t *testing.T) {
 		mallocBuf, err := writer.Malloc(0)
-		require.NoError(t, err)
+		assert.Nil(t, err)
 		assert.Equal(t, 0, len(mallocBuf))
 		assert.Equal(t, 0, writer.WrittenLen())
 	})
@@ -210,12 +209,12 @@ func TestBytesWriter_BoundaryConditions(t *testing.T) {
 		writer := NewBytesWriter(&emptyBuf)
 
 		n, err := writer.WriteBinary([]byte{})
-		require.NoError(t, err)
+		assert.Nil(t, err)
 		assert.Equal(t, 0, n)
 		assert.Equal(t, 0, writer.WrittenLen())
 
 		err = writer.Flush()
-		require.NoError(t, err)
+		assert.Nil(t, err)
 		assert.Equal(t, 0, len(emptyBuf))
 	})
 
@@ -224,7 +223,7 @@ func TestBytesWriter_BoundaryConditions(t *testing.T) {
 		writer := NewBytesWriter(&flushBuf)
 
 		err := writer.Flush()
-		require.NoError(t, err)
+		assert.Nil(t, err)
 		assert.Equal(t, 0, len(flushBuf))
 	})
 }
@@ -242,14 +241,14 @@ func TestBytesWriter_AdvancedFunctionality(t *testing.T) {
 		}
 
 		n, err := writer.WriteBinary(largeData)
-		require.NoError(t, err)
+		assert.Nil(t, err)
 		assert.Equal(t, len(largeData), n)
 		assert.Equal(t, len(largeData), writer.WrittenLen())
 
 		err = writer.Flush()
-		require.NoError(t, err)
+		assert.Nil(t, err)
 		assert.Equal(t, len(largeData), len(buf))
-		assert.Equal(t, largeData, buf)
+		assert.BytesEqual(t, largeData, buf)
 	})
 
 	t.Run("MultipleMalloc", func(t *testing.T) {
@@ -259,14 +258,14 @@ func TestBytesWriter_AdvancedFunctionality(t *testing.T) {
 		// Multiple small mallocs
 		for i := 0; i < 10; i++ {
 			mallocBuf, err := writer.Malloc(10)
-			require.NoError(t, err)
+			assert.Nil(t, err)
 			copy(mallocBuf, []byte("0123456789"))
 		}
 
 		assert.Equal(t, 100, writer.WrittenLen())
 
 		err := writer.Flush()
-		require.NoError(t, err)
+		assert.Nil(t, err)
 		assert.Equal(t, 100, len(buf))
 		assert.Equal(t, "0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", string(buf))
 	})
@@ -277,21 +276,21 @@ func TestBytesWriter_AdvancedFunctionality(t *testing.T) {
 
 		// Mix of Malloc and WriteBinary operations
 		mallocBuf, err := writer.Malloc(5)
-		require.NoError(t, err)
+		assert.Nil(t, err)
 		copy(mallocBuf, []byte("Hello"))
 
 		n, err := writer.WriteBinary([]byte("World"))
-		require.NoError(t, err)
+		assert.Nil(t, err)
 		assert.Equal(t, 5, n)
 
 		mallocBuf, err = writer.Malloc(1)
-		require.NoError(t, err)
+		assert.Nil(t, err)
 		copy(mallocBuf, "!")
 
 		assert.Equal(t, 11, writer.WrittenLen())
 
 		err = writer.Flush()
-		require.NoError(t, err)
+		assert.Nil(t, err)
 		assert.Equal(t, "HelloWorld!", string(buf))
 	})
 }
@@ -303,22 +302,22 @@ func TestBytesReader_ReleaseBehavior(t *testing.T) {
 
 	// Read some data
 	buf, err := reader.Next(3)
-	require.NoError(t, err)
-	assert.Equal(t, []byte("012"), buf)
+	assert.Nil(t, err)
+	assert.Equal(t, "012", string(buf))
 	assert.Equal(t, 3, reader.ReadLen())
 
 	// Release and check behavior
 	err = reader.Release(nil)
-	require.NoError(t, err)
+	assert.Nil(t, err)
 	assert.Equal(t, 0, reader.ReadLen())
 
 	remainingBuf, err := reader.Next(7)
-	require.NoError(t, err)
-	assert.Equal(t, []byte("3456789"), remainingBuf)
+	assert.Nil(t, err)
+	assert.Equal(t, "3456789", string(remainingBuf))
 	assert.Equal(t, 7, reader.ReadLen())
 
 	err = reader.Release(nil)
-	require.NoError(t, err)
+	assert.Nil(t, err)
 	assert.Equal(t, 0, reader.ReadLen())
 }
 
@@ -331,21 +330,21 @@ func TestBytesReaderAndWriter_Interaction(t *testing.T) {
 	writer := NewBytesWriter(&buf)
 
 	n, err := writer.WriteBinary(originalData)
-	require.NoError(t, err)
+	assert.Nil(t, err)
 	assert.Equal(t, len(originalData), n)
 
 	err = writer.Flush()
-	require.NoError(t, err)
-	assert.Equal(t, originalData, buf)
+	assert.Nil(t, err)
+	assert.BytesEqual(t, originalData, buf)
 
 	// Read data using BytesReader
 	reader := NewBytesReader(buf)
 
 	readData := make([]byte, len(originalData))
 	n, err = reader.ReadBinary(readData)
-	require.NoError(t, err)
+	assert.Nil(t, err)
 	assert.Equal(t, len(originalData), n)
-	assert.Equal(t, originalData, readData)
+	assert.BytesEqual(t, originalData, readData)
 
 	assert.Equal(t, len(originalData), reader.ReadLen())
 
@@ -353,7 +352,7 @@ func TestBytesReaderAndWriter_Interaction(t *testing.T) {
 	assert.Equal(t, errNoRemainingData, err)
 
 	err = reader.Release(nil)
-	require.NoError(t, err)
+	assert.Nil(t, err)
 	assert.Equal(t, 0, reader.ReadLen())
 }
 
@@ -364,8 +363,8 @@ func TestBytesReader_ErrorConsistency(t *testing.T) {
 
 	// Read all data
 	buf, err := reader.Next(len(data))
-	require.NoError(t, err)
-	assert.Equal(t, data, buf)
+	assert.Nil(t, err)
+	assert.BytesEqual(t, data, buf)
 
 	// All subsequent operations should return errNoRemainingData
 	_, err = reader.Next(1)
@@ -389,22 +388,22 @@ func TestBytesWriter_MultipleFlush(t *testing.T) {
 
 	// Write some data
 	_, err := writer.WriteBinary([]byte("Hello"))
-	require.NoError(t, err)
+	assert.Nil(t, err)
 
 	err = writer.Flush()
-	require.NoError(t, err)
+	assert.Nil(t, err)
 	assert.Equal(t, "Hello", string(buf))
 
 	err = writer.Flush()
-	require.NoError(t, err)
+	assert.Nil(t, err)
 	assert.Equal(t, "Hello", string(buf))
 
 	m, err := writer.Malloc(1)
-	require.NoError(t, err)
+	assert.Nil(t, err)
 	m[0] = '!'
 
 	err = writer.Flush()
-	require.NoError(t, err)
+	assert.Nil(t, err)
 	assert.Equal(t, "Hello!", string(buf))
 }
 
@@ -416,10 +415,10 @@ func TestBytesWriter_PreExistingData(t *testing.T) {
 		assert.Equal(t, 0, w.WrittenLen())
 
 		_, err := w.WriteBinary([]byte("World"))
-		require.NoError(t, err)
+		assert.Nil(t, err)
 
 		err = w.Flush()
-		require.NoError(t, err)
+		assert.Nil(t, err)
 		assert.Equal(t, "HelloWorld", string(buf))
 	})
 
@@ -429,11 +428,11 @@ func TestBytesWriter_PreExistingData(t *testing.T) {
 		w := NewBytesWriter(&buf)
 
 		m, err := w.Malloc(20)
-		require.NoError(t, err)
+		assert.Nil(t, err)
 		copy(m, "WorldAndMoreStuff!!!")
 
 		err = w.Flush()
-		require.NoError(t, err)
+		assert.Nil(t, err)
 		assert.Equal(t, "HelloWorldAndMoreStuff!!!", string(buf))
 	})
 
@@ -453,7 +452,7 @@ func TestBytesWriter_PreExistingData(t *testing.T) {
 		copy(m2, "CDE_extra_data_here!")
 
 		err := w.Flush()
-		require.NoError(t, err)
+		assert.Nil(t, err)
 		assert.Equal(t, "HelloAB!CDE_extra_data_here!", string(buf))
 	})
 }
@@ -464,9 +463,9 @@ func TestBytesWriter_FlushGrowFlush(t *testing.T) {
 
 	// first write + flush
 	_, err := w.WriteBinary([]byte("Hello"))
-	require.NoError(t, err)
+	assert.Nil(t, err)
 	err = w.Flush()
-	require.NoError(t, err)
+	assert.Nil(t, err)
 	assert.Equal(t, "Hello", string(buf))
 
 	// write enough to trigger acquireSlow (defaultBufSize = 8KB)
@@ -475,11 +474,11 @@ func TestBytesWriter_FlushGrowFlush(t *testing.T) {
 		big[i] = 'X'
 	}
 	_, err = w.WriteBinary(big)
-	require.NoError(t, err)
+	assert.Nil(t, err)
 
 	// second flush must reconstruct pre-flush data via oldBuf
 	err = w.Flush()
-	require.NoError(t, err)
+	assert.Nil(t, err)
 
 	want := "Hello" + string(big)
 	assert.Equal(t, want, string(buf))
@@ -492,14 +491,14 @@ func TestBytesWriter_AcquireSlowCoverage(t *testing.T) {
 		writer := NewBytesWriter(&buf)
 
 		mallocBuf, err := writer.Malloc(16 * 1024)
-		require.NoError(t, err)
+		assert.Nil(t, err)
 		assert.Equal(t, 16*1024, len(mallocBuf))
 
 		_, err = writer.WriteBinary(make([]byte, 32*1024))
-		require.NoError(t, err)
+		assert.Nil(t, err)
 
 		err = writer.Flush()
-		require.NoError(t, err)
+		assert.Nil(t, err)
 		assert.Equal(t, 48*1024, len(buf))
 	})
 
@@ -508,10 +507,10 @@ func TestBytesWriter_AcquireSlowCoverage(t *testing.T) {
 		writer := NewBytesWriter(&buf)
 
 		_, err := writer.WriteBinary([]byte("initial"))
-		require.NoError(t, err)
+		assert.Nil(t, err)
 
 		mallocBuf, err := writer.Malloc(16 * 1024)
-		require.NoError(t, err)
+		assert.Nil(t, err)
 		assert.Equal(t, 16*1024, len(mallocBuf))
 
 		for i := 0; i < len(mallocBuf); i++ {
@@ -519,7 +518,7 @@ func TestBytesWriter_AcquireSlowCoverage(t *testing.T) {
 		}
 
 		err = writer.Flush()
-		require.NoError(t, err)
+		assert.Nil(t, err)
 		assert.True(t, len(buf) > 16*1024)
 	})
 }

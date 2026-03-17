@@ -22,7 +22,7 @@ import (
 	"io"
 	"testing"
 
-	"github.com/stretchr/testify/require"
+	"github.com/cloudwego/gopkg/internal/assert"
 )
 
 type mockReadableLen struct {
@@ -40,9 +40,9 @@ func TestTBufferTransport(t *testing.T) {
 	_ = p.Open()
 	_ = p.Close()
 	_ = p.Flush(context.Background())
-	require.Equal(t, uint64(7), p.RemainingBytes())
+	assert.Equal(t, uint64(7), p.RemainingBytes())
 	m.n = -1
-	require.Equal(t, ^uint64(0), p.RemainingBytes())
+	assert.Equal(t, ^uint64(0), p.RemainingBytes())
 
 	b := &bytes.Buffer{}
 	b.WriteByte(0)
@@ -50,7 +50,7 @@ func TestTBufferTransport(t *testing.T) {
 	_ = p.IsOpen()
 	_ = p.Open()
 	_ = p.Flush(context.Background())
-	require.Equal(t, uint64(1), p.RemainingBytes())
-	require.NoError(t, p.Close())
-	require.Equal(t, uint64(0), p.RemainingBytes())
+	assert.Equal(t, uint64(1), p.RemainingBytes())
+	assert.Nil(t, p.Close())
+	assert.Equal(t, uint64(0), p.RemainingBytes())
 }

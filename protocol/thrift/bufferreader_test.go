@@ -20,7 +20,7 @@ import (
 	"testing"
 
 	"github.com/cloudwego/gopkg/bufiox"
-	"github.com/stretchr/testify/require"
+	"github.com/cloudwego/gopkg/internal/assert"
 )
 
 func TestBinaryReader(t *testing.T) {
@@ -57,85 +57,85 @@ func TestBinaryReader(t *testing.T) {
 
 	r := NewBufferReader(bufiox.NewBytesReader(b))
 	name, mt, seq, err := r.ReadMessageBegin()
-	require.NoError(t, err)
-	require.Equal(t, "hello", name)
-	require.Equal(t, TMessageType(1), mt)
-	require.Equal(t, int32(2), seq)
-	require.Equal(t, sz0, int(r.Readn()))
+	assert.Nil(t, err)
+	assert.Equal(t, "hello", name)
+	assert.Equal(t, TMessageType(1), mt)
+	assert.Equal(t, int32(2), seq)
+	assert.Equal(t, sz0, int(r.Readn()))
 
 	ft, fid, err := r.ReadFieldBegin()
-	require.NoError(t, err)
-	require.Equal(t, TType(3), ft)
-	require.Equal(t, int16(4), fid)
-	require.Equal(t, sz1, int(r.Readn()))
+	assert.Nil(t, err)
+	assert.Equal(t, TType(3), ft)
+	assert.Equal(t, int16(4), fid)
+	assert.Equal(t, sz1, int(r.Readn()))
 
 	ft, fid, err = r.ReadFieldBegin() // for AppendFieldStop
-	require.NoError(t, err)
-	require.Equal(t, STOP, ft)
-	require.Equal(t, int16(0), fid)
-	require.Equal(t, sz2, int(r.Readn()))
+	assert.Nil(t, err)
+	assert.Equal(t, STOP, ft)
+	assert.Equal(t, int16(0), fid)
+	assert.Equal(t, sz2, int(r.Readn()))
 
 	kt, vt, sz, err := r.ReadMapBegin()
-	require.NoError(t, err)
-	require.Equal(t, TType(5), kt)
-	require.Equal(t, TType(6), vt)
-	require.Equal(t, int(7), sz)
-	require.Equal(t, sz3, int(r.Readn()))
+	assert.Nil(t, err)
+	assert.Equal(t, TType(5), kt)
+	assert.Equal(t, TType(6), vt)
+	assert.Equal(t, int(7), sz)
+	assert.Equal(t, sz3, int(r.Readn()))
 
 	et, sz, err := r.ReadListBegin()
-	require.NoError(t, err)
-	require.Equal(t, TType(8), et)
-	require.Equal(t, int(9), sz)
-	require.Equal(t, sz4, int(r.Readn()))
+	assert.Nil(t, err)
+	assert.Equal(t, TType(8), et)
+	assert.Equal(t, int(9), sz)
+	assert.Equal(t, sz4, int(r.Readn()))
 
 	et, sz, err = r.ReadSetBegin()
-	require.NoError(t, err)
-	require.Equal(t, TType(10), et)
-	require.Equal(t, int(11), sz)
-	require.Equal(t, sz5, int(r.Readn()))
+	assert.Nil(t, err)
+	assert.Equal(t, TType(10), et)
+	assert.Equal(t, int(11), sz)
+	assert.Equal(t, sz5, int(r.Readn()))
 
 	bin, err := r.ReadBinary()
-	require.NoError(t, err)
-	require.Equal(t, "12", string(bin))
-	require.Equal(t, sz6, int(r.Readn()))
+	assert.Nil(t, err)
+	assert.Equal(t, "12", string(bin))
+	assert.Equal(t, sz6, int(r.Readn()))
 
 	s, err := r.ReadString()
-	require.NoError(t, err)
-	require.Equal(t, "13", s)
-	require.Equal(t, sz7, int(r.Readn()))
+	assert.Nil(t, err)
+	assert.Equal(t, "13", s)
+	assert.Equal(t, sz7, int(r.Readn()))
 
 	vb, err := r.ReadBool()
-	require.NoError(t, err)
-	require.True(t, vb)
+	assert.Nil(t, err)
+	assert.True(t, vb)
 	vb, err = r.ReadBool()
-	require.NoError(t, err)
-	require.False(t, vb)
-	require.Equal(t, sz8, int(r.Readn()))
+	assert.Nil(t, err)
+	assert.True(t, !vb)
+	assert.Equal(t, sz8, int(r.Readn()))
 
 	v8, err := r.ReadByte()
-	require.NoError(t, err)
-	require.Equal(t, int8(14), v8)
-	require.Equal(t, sz9, int(r.Readn()))
+	assert.Nil(t, err)
+	assert.Equal(t, int8(14), v8)
+	assert.Equal(t, sz9, int(r.Readn()))
 
 	v16, err := r.ReadI16()
-	require.NoError(t, err)
-	require.Equal(t, int16(15), v16)
-	require.Equal(t, sz10, int(r.Readn()))
+	assert.Nil(t, err)
+	assert.Equal(t, int16(15), v16)
+	assert.Equal(t, sz10, int(r.Readn()))
 
 	v32, err := r.ReadI32()
-	require.NoError(t, err)
-	require.Equal(t, int32(16), v32)
-	require.Equal(t, sz11, int(r.Readn()))
+	assert.Nil(t, err)
+	assert.Equal(t, int32(16), v32)
+	assert.Equal(t, sz11, int(r.Readn()))
 
 	v64, err := r.ReadI64()
-	require.NoError(t, err)
-	require.Equal(t, int64(17), v64)
-	require.Equal(t, sz12, int(r.Readn()))
+	assert.Nil(t, err)
+	assert.Equal(t, int64(17), v64)
+	assert.Equal(t, sz12, int(r.Readn()))
 
 	vf, err := r.ReadDouble()
-	require.NoError(t, err)
-	require.Equal(t, float64(18.5), vf)
-	require.Equal(t, sz13, int(r.Readn()))
+	assert.Nil(t, err)
+	assert.Equal(t, float64(18.5), vf)
+	assert.Equal(t, sz13, int(r.Readn()))
 }
 
 func TestBinaryReaderSkip(t *testing.T) {
@@ -208,38 +208,38 @@ func TestBinaryReaderSkip(t *testing.T) {
 	r := NewBufferReader(bufiox.NewBytesReader(b))
 
 	err := r.Skip(BYTE) // byte
-	require.NoError(t, err)
-	require.Equal(t, int64(sz0), r.Readn())
+	assert.Nil(t, err)
+	assert.Equal(t, int64(sz0), r.Readn())
 	err = r.Skip(STRING) // string
-	require.NoError(t, err)
-	require.Equal(t, int64(sz1), r.Readn())
+	assert.Nil(t, err)
+	assert.Equal(t, int64(sz1), r.Readn())
 	err = r.Skip(LIST) // list<i32>
-	require.NoError(t, err)
-	require.Equal(t, int64(sz2), r.Readn())
+	assert.Nil(t, err)
+	assert.Equal(t, int64(sz2), r.Readn())
 	err = r.Skip(LIST) // list<string>
-	require.NoError(t, err)
-	require.Equal(t, int64(sz3), r.Readn())
+	assert.Nil(t, err)
+	assert.Equal(t, int64(sz3), r.Readn())
 	err = r.Skip(LIST) // list<list<i32>>
-	require.NoError(t, err)
-	require.Equal(t, int64(sz4), r.Readn())
+	assert.Nil(t, err)
+	assert.Equal(t, int64(sz4), r.Readn())
 	err = r.Skip(MAP) // map<i32, i64>
-	require.NoError(t, err)
-	require.Equal(t, int64(sz5), r.Readn())
+	assert.Nil(t, err)
+	assert.Equal(t, int64(sz5), r.Readn())
 	err = r.Skip(MAP) // map<i32, string>
-	require.NoError(t, err)
-	require.Equal(t, int64(sz6), r.Readn())
+	assert.Nil(t, err)
+	assert.Equal(t, int64(sz6), r.Readn())
 	err = r.Skip(MAP) // map<string, i64>
-	require.NoError(t, err)
-	require.Equal(t, int64(sz7), r.Readn())
+	assert.Nil(t, err)
+	assert.Equal(t, int64(sz7), r.Readn())
 	err = r.Skip(MAP) // map<i32, list<i32>>
-	require.NoError(t, err)
-	require.Equal(t, int64(sz8), r.Readn())
+	assert.Nil(t, err)
+	assert.Equal(t, int64(sz8), r.Readn())
 	err = r.Skip(MAP) // map<list<i32>, i32>
-	require.NoError(t, err)
-	require.Equal(t, int64(sz9), r.Readn())
+	assert.Nil(t, err)
+	assert.Equal(t, int64(sz9), r.Readn())
 	err = r.Skip(STRUCT) // struct i32, list<i32>
-	require.NoError(t, err)
-	require.Equal(t, int64(sz10), r.Readn())
+	assert.Nil(t, err)
+	assert.Equal(t, int64(sz10), r.Readn())
 	r.Recycle()
 
 	{ // other cases
@@ -250,10 +250,10 @@ func TestBinaryReaderSkip(t *testing.T) {
 		}
 		r := NewBufferReader(bufiox.NewBytesReader(b))
 		err := r.Skip(STRUCT)
-		require.Same(t, errDepthLimitExceeded, err)
+		assert.True(t, errDepthLimitExceeded == err)
 
 		// unknown type
 		err = r.Skip(TType(122))
-		require.Error(t, err)
+		assert.True(t, err != nil)
 	}
 }

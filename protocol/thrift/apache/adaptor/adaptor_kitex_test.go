@@ -21,8 +21,8 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/cloudwego/gopkg/internal/assert"
 	"github.com/cloudwego/gopkg/protocol/thrift/apache/adaptor"
-	"github.com/stretchr/testify/require"
 
 	"github.com/cloudwego/gopkg/bufiox"
 	"github.com/cloudwego/gopkg/protocol/thrift"
@@ -77,17 +77,17 @@ func testAdaptor(t *testing.T, kitexStruct kitexGen, bp interface{}) {
 		from = mockNewKitexStruct()
 		to = &newKitexStruct{}
 	default:
-		require.Error(t, fmt.Errorf("kitex gen type not ok"))
+		assert.True(t, fmt.Errorf("kitex gen type not ok") != nil)
 	}
 	err := adaptor.AdaptWrite(from, bp)
-	require.NoError(t, err)
+	assert.Nil(t, err)
 	if flushable, ok := bp.(interface{ Flush() error }); ok {
 		// simulates the flush action after encoding in kitex.
-		require.NoError(t, flushable.Flush())
+		assert.Nil(t, flushable.Flush())
 	}
 	err = adaptor.AdaptRead(to, bp)
-	require.NoError(t, err)
-	require.True(t, reflect.DeepEqual(from, to))
+	assert.Nil(t, err)
+	assert.True(t, reflect.DeepEqual(from, to))
 }
 
 // binaryProtocolV0100 mocks the kitex thrift binary protocol struct before v0.11.0 (v0.11.0 is not included), with remote.ByteBuffer as the field 'trans' to handle the data.

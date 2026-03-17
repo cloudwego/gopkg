@@ -20,7 +20,7 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/cloudwego/gopkg/internal/assert"
 )
 
 func TestStrStore(t *testing.T) {

@@ -19,7 +19,7 @@ package unsafex
 import (
 	"testing"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/cloudwego/gopkg/internal/assert"
 )
 
 func TestUBinaryToString(t *testing.T) {

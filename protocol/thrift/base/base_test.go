@@ -19,7 +19,7 @@ package base
 import (
 	"testing"
 
-	"github.com/stretchr/testify/require"
+	"github.com/cloudwego/gopkg/internal/assert"
 )
 
 func TestBase(t *testing.T) {
@@ -35,13 +35,13 @@ func TestBase(t *testing.T) {
 	sz := p.BLength()
 	b := make([]byte, sz)
 	n := p.FastWrite(b)
-	require.Equal(t, sz, n)
+	assert.Equal(t, sz, n)
 
 	p2 := NewBase()
 	n, err = p2.FastRead(b)
-	require.Equal(t, len(b), n)
-	require.NoError(t, err)
-	require.Equal(t, p, p2)
+	assert.Equal(t, len(b), n)
+	assert.Nil(t, err)
+	assert.DeepEqual(t, p, p2)
 
 	// optional fields
 	p.Extra = map[string]string{"5": "6"}
@@ -50,13 +50,13 @@ func TestBase(t *testing.T) {
 	sz = p.BLength()
 	b = make([]byte, sz)
 	n = p.FastWrite(b)
-	require.Equal(t, sz, n)
+	assert.Equal(t, sz, n)
 
 	p2 = NewBase()
 	n, err = p2.FastRead(b)
-	require.Equal(t, len(b), n)
-	require.NoError(t, err)
-	require.Equal(t, p, p2)
+	assert.Equal(t, len(b), n)
+	assert.Nil(t, err)
+	assert.DeepEqual(t, p, p2)
 }
 
 func TestBaseResp(t *testing.T) {
@@ -72,11 +72,11 @@ func TestBaseResp(t *testing.T) {
 	sz := p.BLength()
 	b := make([]byte, sz)
 	n := p.FastWrite(b)
-	require.Equal(t, sz, n)
+	assert.Equal(t, sz, n)
 
 	p2 := NewBaseResp()
 	n, err = p2.FastRead(b)
-	require.Equal(t, len(b), n)
-	require.NoError(t, err)
-	require.Equal(t, p, p2)
+	assert.Equal(t, len(b), n)
+	assert.Nil(t, err)
+	assert.DeepEqual(t, p, p2)
 }

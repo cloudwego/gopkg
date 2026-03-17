@@ -26,7 +26,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/require"
+	"github.com/cloudwego/gopkg/internal/assert"
 
 	"github.com/bytedance/gopkg/util/gopool"
 )
@@ -46,7 +46,7 @@ func TestGoPool(t *testing.T) {
 			})
 		}
 		wg.Wait()
-		require.Equal(t, int32(n), atomic.LoadInt32(&v))
+		assert.Equal(t, int32(n), atomic.LoadInt32(&v))
 	}
 
 	{ // test without PanicHandler
@@ -63,8 +63,8 @@ func TestGoPool(t *testing.T) {
 		x := "testpanic"
 		p.SetPanicHandler(func(c context.Context, r interface{}) {
 			defer wg.Done()
-			require.Equal(t, x, r)
-			require.Same(t, ctx, c)
+			assert.DeepEqual(t, x, r)
+			assert.True(t, ctx == c)
 		})
 		wg.Add(1)
 		p.CtxGo(ctx, func() {
@@ -82,9 +82,9 @@ func TestGoPool_Ticker(t *testing.T) {
 		p.Go(func() { time.Sleep(o.WorkerMaxAge / 10) })
 	}
 	time.Sleep(10 * time.Millisecond) // wait all goroutines to run
-	require.Equal(t, 10, p.CurrentWorkers())
+	assert.Equal(t, 10, p.CurrentWorkers())
 	time.Sleep(o.WorkerMaxAge + o.WorkerMaxAge/10) // ticker will trigger worker to exit
-	require.Equal(t, 0, p.CurrentWorkers())
+	assert.Equal(t, 0, p.CurrentWorkers())
 }
 
 func TestGoPool_Full(t *testing.T) {
@@ -98,7 +98,7 @@ func TestGoPool_Full(t *testing.T) {
 		p.Go(func() { atomic.AddInt32(&v, 1) })
 	}
 	time.Sleep(10 * time.Millisecond) // wait all goroutines done
-	require.Equal(t, int32(n), atomic.LoadInt32(&v))
+	assert.Equal(t, int32(n), atomic.LoadInt32(&v))
 }
 
 func TestGoPool_MaxIdle(t *testing.T) {
@@ -112,8 +112,8 @@ func TestGoPool_MaxIdle(t *testing.T) {
 		p.Go(func() { atomic.AddInt32(&v, 1) })
 	}
 	time.Sleep(10 * time.Millisecond) // wait all goroutines done
-	require.Equal(t, int32(n), atomic.LoadInt32(&v))
-	require.Equal(t, o.MaxIdleWorkers, p.CurrentWorkers())
+	assert.Equal(t, int32(n), atomic.LoadInt32(&v))
+	assert.Equal(t, o.MaxIdleWorkers, p.CurrentWorkers())
 }
 
 // ======== Benchmarks ...

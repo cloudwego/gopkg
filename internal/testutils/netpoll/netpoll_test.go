@@ -20,7 +20,7 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/stretchr/testify/require"
+	"github.com/cloudwego/gopkg/internal/assert"
 )
 
 func TestNetpollDirectWriter(t *testing.T) {
@@ -49,5 +49,5 @@ func TestNetpollDirectWriter(t *testing.T) {
 		}
 	}
 	expect := bytes.Join(vv, []byte{})
-	require.Equal(t, expect, w.Bytes())
+	assert.BytesEqual(t, expect, w.Bytes())
 }

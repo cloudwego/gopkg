@@ -19,16 +19,16 @@ package thrift
 import (
 	"testing"
 
-	"github.com/stretchr/testify/require"
+	"github.com/cloudwego/gopkg/internal/assert"
 )
 
 func TestFastMarshal(t *testing.T) {
 	req1, req2 := NewApplicationException(1, "hello"), NewApplicationException(0, "")
 	buf := FastMarshal(req1)
 	err := FastUnmarshal(buf, req2)
-	require.NoError(t, err)
-	require.Equal(t, req1.t, req2.t)
-	require.Equal(t, req1.m, req2.m)
+	assert.Nil(t, err)
+	assert.Equal(t, req1.t, req2.t)
+	assert.Equal(t, req1.m, req2.m)
 }
 
 func TestMarshalFastMsg(t *testing.T) {
@@ -36,26 +36,26 @@ func TestMarshalFastMsg(t *testing.T) {
 
 	req := NewApplicationException(1, "hello")
 	b, err := MarshalFastMsg("Echo", CALL, 1, req)
-	require.NoError(t, err)
+	assert.Nil(t, err)
 
 	resp := NewApplicationException(0, "")
 	method, seq, err := UnmarshalFastMsg(b, resp)
-	require.NoError(t, err)
-	require.Equal(t, "Echo", method)
-	require.Equal(t, int32(1), seq)
-	require.Equal(t, req.t, resp.t)
-	require.Equal(t, req.m, resp.m)
+	assert.Nil(t, err)
+	assert.Equal(t, "Echo", method)
+	assert.Equal(t, int32(1), seq)
+	assert.Equal(t, req.t, resp.t)
+	assert.Equal(t, req.m, resp.m)
 
 	// EXCEPTION
 
 	ex := NewApplicationException(WRONG_METHOD_NAME, "Ex!")
 	b, err = MarshalFastMsg("ExMethod", EXCEPTION, 2, ex)
-	require.NoError(t, err)
+	assert.Nil(t, err)
 	method, seq, err = UnmarshalFastMsg(b, nil)
-	require.NotNil(t, err)
-	require.Equal(t, "ExMethod", method)
-	require.Equal(t, int32(2), seq)
+	assert.True(t, err != nil)
+	assert.Equal(t, "ExMethod", method)
+	assert.Equal(t, int32(2), seq)
 	e, ok := err.(*ApplicationException)
-	require.True(t, ok)
-	require.True(t, e.TypeID() == ex.TypeID() && e.Error() == ex.Error())
+	assert.True(t, ok)
+	assert.True(t, e.TypeID() == ex.TypeID() && e.Error() == ex.Error())
 }

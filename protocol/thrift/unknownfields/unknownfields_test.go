@@ -19,9 +19,8 @@ package unknownfields
 import (
 	"testing"
 
+	"github.com/cloudwego/gopkg/internal/assert"
 	"github.com/cloudwego/gopkg/protocol/thrift"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestUnknownFields(t *testing.T) {
@@ -119,11 +118,11 @@ func TestUnknownFields(t *testing.T) {
 	// decode
 	a._unknownFields = b
 	fields, err := GetUnknownFields(a)
-	require.NoError(t, err)
-	require.Equal(t, len(expect), len(fields))
+	assert.Nil(t, err)
+	assert.Equal(t, len(expect), len(fields))
 
 	// test fields
 	for i := range fields {
-		assert.Equal(t, expect[i], fields[i])
+		assert.DeepEqual(t, expect[i], fields[i])
 	}
 }

@@ -22,42 +22,42 @@ import (
 	"testing"
 
 	"github.com/cloudwego/gopkg/bufiox"
-	"github.com/stretchr/testify/require"
+	"github.com/cloudwego/gopkg/internal/assert"
 )
 
 func TestThriftReadWrite(t *testing.T) {
 	v := &TestingWriteRead{Msg: "Hello"}
 
 	err := CheckTStruct(v)
-	require.Same(t, err, errCheckTStructNotRegistered)
+	assert.True(t, err == errCheckTStructNotRegistered)
 	RegisterCheckTStruct(checkTStruct)
 	err = CheckTStruct(v)
-	require.NoError(t, err)
+	assert.Nil(t, err)
 
 	buf := &bytes.Buffer{}
 	bw := bufiox.NewDefaultWriter(buf)
 
 	err = ThriftWrite(bw, v)
-	require.Same(t, err, errThriftWriteNotRegistered)
+	assert.True(t, err == errThriftWriteNotRegistered)
 
 	RegisterThriftWrite(callThriftWrite)
 	err = ThriftWrite(bw, v) // calls v.Write
-	require.NoError(t, err)
+	assert.Nil(t, err)
 	err = bw.Flush()
-	require.NoError(t, err)
+	assert.Nil(t, err)
 
 	p := &TestingWriteRead{}
 
 	br := bufiox.NewDefaultReader(buf)
 
 	err = ThriftRead(br, p)
-	require.Same(t, err, errThriftReadNotRegistered)
+	assert.True(t, err == errThriftReadNotRegistered)
 
 	RegisterThriftRead(callThriftRead)
 	err = ThriftRead(br, p) // calls p.Read
-	require.NoError(t, err)
+	assert.Nil(t, err)
 
-	require.Equal(t, v.Msg, p.Msg)
+	assert.Equal(t, v.Msg, p.Msg)
 }
 
 type TStruct interface { // simulate thrift.TStruct

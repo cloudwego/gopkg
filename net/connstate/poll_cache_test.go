@@ -15,36 +15,45 @@
 package connstate
 
 import (
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 	"unsafe"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/cloudwego/gopkg/internal/assert"
 )
+
+func containsInt32(s []int32, v int32) bool {
+	for _, x := range s {
+		if x == v {
+			return true
+		}
+	}
+	return false
+}
 
 func TestPollCacheAlloc(t *testing.T) {
 	cache := &pollCache{}
 
 	// Test initial allocation
 	op1 := cache.alloc()
-	require.NotNil(t, op1)
-	assert.GreaterOrEqual(t, op1.index, int32(0))
-	assert.Equal(t, int(0), op1.fd)
+	assert.True(t, op1 != nil)
+	assert.True(t, op1.index >= 0)
+	assert.Equal(t, 0, op1.fd)
 
 	// Test multiple allocations
 	op2 := cache.alloc()
-	require.NotNil(t, op2)
-	assert.Equal(t, int(0), op2.fd)
+	assert.True(t, op2 != nil)
+	assert.Equal(t, 0, op2.fd)
 
 	// Test that allocated operators are different
-	assert.NotEqual(t, op1, op2)
+	assert.True(t, op1 != op2)
 
 	// Verify they both have valid indices
-	assert.GreaterOrEqual(t, op1.index, int32(0))
-	assert.GreaterOrEqual(t, op2.index, int32(0))
+	assert.True(t, op1.index >= 0)
+	assert.True(t, op2.index >= 0)
 }
 
 func TestPollCacheAllocReuse(t *testing.T) {
@@ -54,7 +63,7 @@ func TestPollCacheAllocReuse(t *testing.T) {
 	var ops []*fdOperator
 	for i := 0; i < 10; i++ {
 		op := cache.alloc()
-		require.NotNil(t, op)
+		assert.True(t, op != nil)
 		ops = append(ops, op)
 	}
 
@@ -68,10 +77,10 @@ func TestPollCacheAllocReuse(t *testing.T) {
 
 	// Allocate again, should reuse freed operators
 	reusedOp := cache.alloc()
-	require.NotNil(t, reusedOp)
+	assert.True(t, reusedOp != nil)
 
 	// The reused operator should have a high index (from cache)
-	assert.GreaterOrEqual(t, reusedOp.index, int32(10))
+	assert.True(t, reusedOp.index >= int32(10))
 }
 
 func TestPollCacheFreeable(t *testing.T) {
@@ -81,8 +90,8 @@ func TestPollCacheFreeable(t *testing.T) {
 	op1 := cache.alloc()
 	op2 := cache.alloc()
 
-	require.NotNil(t, op1)
-	require.NotNil(t, op2)
+	assert.True(t, op1 != nil)
+	assert.True(t, op2 != nil)
 
 	// Mark operators as freeable
 	cache.freeable(op1)
@@ -90,9 +99,9 @@ func TestPollCacheFreeable(t *testing.T) {
 
 	// Verify they are in freelist
 	cache.lock.Lock()
-	assert.Len(t, cache.freelist, 2)
-	assert.Contains(t, cache.freelist, op1.index)
-	assert.Contains(t, cache.freelist, op2.index)
+	assert.True(t, len(cache.freelist) == 2)
+	assert.True(t, containsInt32(cache.freelist, op1.index))
+	assert.True(t, containsInt32(cache.freelist, op2.index))
 	cache.lock.Unlock()
 }
 
@@ -103,7 +112,7 @@ func TestPollCacheFree(t *testing.T) {
 	var ops []*fdOperator
 	for i := 0; i < 5; i++ {
 		op := cache.alloc()
-		require.NotNil(t, op)
+		assert.True(t, op != nil)
 		ops = append(ops, op)
 		cache.freeable(op)
 	}
@@ -170,7 +179,7 @@ func TestPollCacheConcurrent(t *testing.T) {
 
 	// Verify cache is still functional
 	finalOp := cache.alloc()
-	require.NotNil(t, finalOp)
+	assert.True(t, finalOp != nil)
 }
 
 func TestFDOperatorFields(t *testing.T) {
@@ -180,7 +189,7 @@ func TestFDOperatorFields(t *testing.T) {
 	}
 
 	assert.Equal(t, int32(42), op.index)
-	assert.Equal(t, int(123), op.fd)
+	assert.Equal(t, 123, op.fd)
 	assert.Nil(t, op.link)
 	assert.Nil(t, op.conn)
 }
@@ -192,8 +201,8 @@ func TestFDOperatorSize(t *testing.T) {
 	assert.Equal(t, size1, size2)
 
 	// Should have reasonable size (not too large, not too small)
-	assert.Greater(t, size1, uintptr(16)) // At least contains fields
-	assert.Less(t, size1, uintptr(256))   // Not excessively large
+	assert.True(t, size1 > uintptr(16)) // At least contains fields
+	assert.True(t, size1 < uintptr(256))   // Not excessively large
 }
 
 func TestPollCacheBlockAllocation(t *testing.T) {
@@ -212,7 +221,7 @@ func TestPollCacheBlockAllocation(t *testing.T) {
 
 	for i := 0; i < allocations; i++ {
 		op := cache.alloc()
-		require.NotNil(t, op, "Allocation %d should succeed", i)
+		assert.True(t, op != nil, fmt.Sprintf("Allocation %d should succeed", i))
 		ops = append(ops, op)
 	}
 
@@ -220,7 +229,7 @@ func TestPollCacheBlockAllocation(t *testing.T) {
 	indices := make(map[int32]struct{})
 	for _, op := range ops {
 		_, exists := indices[op.index]
-		assert.False(t, exists, "Index %d should be unique", op.index)
+		assert.True(t, !exists, fmt.Sprintf("Index %d should be unique", op.index))
 		indices[op.index] = struct{}{}
 	}
 }
@@ -255,10 +264,10 @@ func TestPollCacheFreeAckRace(t *testing.T) {
 
 	// Verify no panics or corruption
 	finalOp := cache.alloc()
-	require.NotNil(t, finalOp)
+	assert.True(t, finalOp != nil)
 
 	// Verify some operations completed
-	assert.Greater(t, atomic.LoadInt64(&freeCount), int64(0))
+	assert.True(t, atomic.LoadInt64(&freeCount) > 0)
 }
 
 func BenchmarkPollCacheAlloc(b *testing.B) {

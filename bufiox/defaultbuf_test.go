@@ -17,11 +17,11 @@ package bufiox
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/cloudwego/gopkg/internal/assert"
 )
 
 // TestDefaultReader_BasicFunctionality tests the basic functionality of DefaultReader
@@ -30,31 +30,31 @@ func TestDefaultReader_BasicFunctionality(t *testing.T) {
 	reader := NewDefaultReader(bytes.NewReader(data))
 
 	buf, err := reader.Next(5)
-	require.NoError(t, err)
-	assert.Equal(t, []byte("Hello"), buf)
+	assert.Nil(t, err)
+	assert.Equal(t, "Hello", string(buf))
 	assert.Equal(t, 5, reader.ReadLen())
 
 	peekBuf, err := reader.Peek(1)
-	require.NoError(t, err)
-	assert.Equal(t, []byte(","), peekBuf)
+	assert.Nil(t, err)
+	assert.Equal(t, ",", string(peekBuf))
 	assert.Equal(t, 5, reader.ReadLen())
 
 	err = reader.Skip(1)
-	require.NoError(t, err)
+	assert.Nil(t, err)
 	assert.Equal(t, 6, reader.ReadLen())
 
 	buf, err = reader.Next(6)
-	require.NoError(t, err)
-	assert.Equal(t, []byte(" World"), buf)
+	assert.Nil(t, err)
+	assert.Equal(t, " World", string(buf))
 
 	var binaryBuf [3]byte
 	n, err := reader.ReadBinary(binaryBuf[:])
-	require.Equal(t, io.EOF, err)
+	assert.Equal(t, io.EOF, err)
 	assert.Equal(t, 1, n)
-	assert.Equal(t, []byte("!"), binaryBuf[:1])
+	assert.Equal(t, "!", string(binaryBuf[:1]))
 
 	err = reader.Release(nil)
-	require.NoError(t, err)
+	assert.Nil(t, err)
 }
 
 // TestDefaultReader_BoundaryConditions tests boundary conditions
@@ -80,17 +80,17 @@ func TestDefaultReader_BoundaryConditions(t *testing.T) {
 
 		// Test zero Next
 		buf, err := reader.Next(0)
-		require.NoError(t, err)
+		assert.Nil(t, err)
 		assert.Nil(t, buf) // Next(0) returns nil slice
 
 		// Test zero Peek
 		buf, err = reader.Peek(0)
-		require.NoError(t, err)
+		assert.Nil(t, err)
 		assert.Nil(t, buf) // Peek(0) returns nil slice
 
 		// Test zero Skip
 		err = reader.Skip(0)
-		require.NoError(t, err)
+		assert.Nil(t, err)
 	})
 
 	t.Run("EmptySlice", func(t *testing.T) {
@@ -99,7 +99,7 @@ func TestDefaultReader_BoundaryConditions(t *testing.T) {
 		// Test empty ReadBinary
 		var emptyBuf []byte
 		n, err := reader.ReadBinary(emptyBuf)
-		require.NoError(t, err)
+		assert.Nil(t, err)
 		assert.Equal(t, 0, n)
 	})
 
@@ -114,9 +114,9 @@ func TestDefaultReader_BoundaryConditions(t *testing.T) {
 
 		// Test reading large chunk
 		buf, err := reader.Next(32 * 1024) // 32KB
-		require.NoError(t, err)
+		assert.Nil(t, err)
 		assert.Equal(t, 32*1024, len(buf))
-		assert.Equal(t, largeData[:32*1024], buf)
+		assert.BytesEqual(t, largeData[:32*1024], buf)
 	})
 }
 
@@ -129,11 +129,11 @@ func TestDefaultReader_ErrorConditions(t *testing.T) {
 
 		// First call should fail
 		_, err := reader.Next(10)
-		assert.Error(t, err)
+		assert.True(t, err != nil)
 
 		// Subsequent calls should return the same error
 		_, err = reader.Peek(10)
-		assert.Error(t, err)
+		assert.True(t, err != nil)
 	})
 
 	t.Run("NoProgressError", func(t *testing.T) {
@@ -153,8 +153,8 @@ func TestDefaultReader_PeekReturnsBufferedOnError(t *testing.T) {
 
 	// Peek more than available; should return buffered data + error
 	buf, err := r.Peek(10)
-	assert.Error(t, err)
-	assert.Equal(t, data, buf)
+	assert.True(t, err != nil)
+	assert.BytesEqual(t, data, buf)
 }
 
 func TestDefaultReader_ReleaseAfterMultipleOperations(t *testing.T) {
@@ -164,16 +164,16 @@ func TestDefaultReader_ReleaseAfterMultipleOperations(t *testing.T) {
 
 	for i := 0; i < 2048; i++ { // Reduce iterations to fit within data size
 		_, err := reader.Next(10)
-		require.NoError(t, err)
+		assert.Nil(t, err)
 		_, err = reader.Peek(10)
-		require.NoError(t, err)
+		assert.Nil(t, err)
 		err = reader.Skip(10)
-		require.NoError(t, err)
+		assert.Nil(t, err)
 	}
 
 	// Release should free all buffers
 	err := reader.Release(nil)
-	require.NoError(t, err)
+	assert.Nil(t, err)
 	assert.Equal(t, 0, reader.ReadLen())
 }
 
@@ -184,20 +184,20 @@ func TestDefaultWriter_BasicFunctionality(t *testing.T) {
 
 	// Test Malloc
 	mallocBuf, err := writer.Malloc(10)
-	require.NoError(t, err)
+	assert.Nil(t, err)
 	assert.Equal(t, 10, len(mallocBuf))
 	copy(mallocBuf, []byte("0123456789"))
 	assert.Equal(t, 10, writer.WrittenLen())
 
 	// Test WriteBinary
 	n, err := writer.WriteBinary([]byte("Hello"))
-	require.NoError(t, err)
+	assert.Nil(t, err)
 	assert.Equal(t, 5, n)
 	assert.Equal(t, 15, writer.WrittenLen())
 
 	// Test Flush
 	err = writer.Flush()
-	require.NoError(t, err)
+	assert.Nil(t, err)
 	assert.Equal(t, 0, writer.WrittenLen())
 	assert.Equal(t, "0123456789Hello", buf.String())
 }
@@ -217,7 +217,7 @@ func TestDefaultWriter_BoundaryConditions(t *testing.T) {
 
 		// Test zero Malloc
 		buf, err := writer.Malloc(0)
-		require.NoError(t, err)
+		assert.Nil(t, err)
 		assert.Equal(t, 0, len(buf)) // Malloc(0) returns a slice with length 0
 		assert.Equal(t, 0, writer.WrittenLen())
 	})
@@ -228,7 +228,7 @@ func TestDefaultWriter_BoundaryConditions(t *testing.T) {
 
 		// Test large Malloc to trigger buffer growth
 		largeBuf, err := writer.Malloc(64 * 1024) // 64KB
-		require.NoError(t, err)
+		assert.Nil(t, err)
 		assert.Equal(t, 64*1024, len(largeBuf))
 		assert.Equal(t, 64*1024, writer.WrittenLen())
 
@@ -238,20 +238,13 @@ func TestDefaultWriter_BoundaryConditions(t *testing.T) {
 		}
 
 		err = writer.Flush()
-		require.NoError(t, err)
+		assert.Nil(t, err)
 
 		// Verify the actual written byte data integrity
 		writtenBytes := buf.Bytes()
 		assert.Equal(t, 64*1024, len(writtenBytes))
 
-		// Verify each byte matches the expected pattern (i % 256)
-		for i := 0; i < 64*1024; i++ {
-			expectedByte := byte(i % 256)
-			actualByte := writtenBytes[i]
-			assert.Equalf(t, expectedByte, actualByte,
-				"Large buffer data mismatch at byte %d: expected %d, got %d",
-				i, expectedByte, actualByte)
-		}
+		assert.BytesEqual(t, largeBuf, writtenBytes)
 	})
 
 	t.Run("WriteBinaryThreshold", func(t *testing.T) {
@@ -265,7 +258,7 @@ func TestDefaultWriter_BoundaryConditions(t *testing.T) {
 		}
 
 		n, err := writer.WriteBinary(smallData)
-		require.NoError(t, err)
+		assert.Nil(t, err)
 		assert.Equal(t, 1024, n)
 
 		// Test WriteBinary above threshold
@@ -275,29 +268,18 @@ func TestDefaultWriter_BoundaryConditions(t *testing.T) {
 		}
 
 		n, err = writer.WriteBinary(largeData)
-		require.NoError(t, err)
+		assert.Nil(t, err)
 		assert.Equal(t, 8*1024, n)
 
 		err = writer.Flush()
-		require.NoError(t, err)
+		assert.Nil(t, err)
 		assert.Equal(t, 1024+8*1024, buf.Len())
 
 		// Verify the actual written byte data integrity
 		writtenBytes := buf.Bytes()
 
-		// Verify small data (first 1024 bytes)
-		for i := 0; i < 1024; i++ {
-			assert.Equalf(t, byte(i), writtenBytes[i],
-				"Small data mismatch at byte %d: expected %d, got %d",
-				i, byte(i), writtenBytes[i])
-		}
-
-		// Verify large data (next 8KB bytes)
-		for i := 0; i < 8*1024; i++ {
-			assert.Equalf(t, byte(i), writtenBytes[1024+i],
-				"Large data mismatch at byte %d: expected %d, got %d",
-				i, byte(i), writtenBytes[1024+i])
-		}
+		assert.BytesEqual(t, smallData, writtenBytes[:1024])
+		assert.BytesEqual(t, largeData, writtenBytes[1024:])
 	})
 }
 
@@ -309,15 +291,15 @@ func TestDefaultWriter_ErrorHandling(t *testing.T) {
 
 	// Write some data
 	_, err := writer.Malloc(10)
-	require.NoError(t, err)
+	assert.Nil(t, err)
 
 	// Flush should fail
 	err = writer.Flush()
-	assert.Error(t, err)
+	assert.True(t, err != nil)
 
 	// Subsequent operations should fail
 	_, err = writer.Malloc(5)
-	assert.Error(t, err)
+	assert.True(t, err != nil)
 }
 
 // TestDefaultWriter_MemoryLeaks tests for memory leaks in DefaultWriter
@@ -328,13 +310,13 @@ func TestDefaultWriter_MemoryLeaks(t *testing.T) {
 		// Perform multiple operations and flushes
 		for i := 0; i < 100; i++ {
 			_, err := writer.Malloc(100)
-			require.NoError(t, err)
+			assert.Nil(t, err)
 
 			_, err = writer.WriteBinary([]byte("test data"))
-			require.NoError(t, err)
+			assert.Nil(t, err)
 
 			err = writer.Flush()
-			require.NoError(t, err)
+			assert.Nil(t, err)
 		}
 	})
 
@@ -350,13 +332,13 @@ func TestDefaultWriter_MemoryLeaks(t *testing.T) {
 			}
 
 			_, err := writer.WriteBinary(largeData)
-			require.NoError(t, err)
+			assert.Nil(t, err)
 		}
 
-		require.Equal(t, 32*1024*10, writer.WrittenLen())
+		assert.Equal(t, 32*1024*10, writer.WrittenLen())
 
 		err := writer.Flush()
-		require.NoError(t, err)
+		assert.Nil(t, err)
 
 		// Verify written data integrity
 		writtenBytes := buf.Bytes()
@@ -366,8 +348,8 @@ func TestDefaultWriter_MemoryLeaks(t *testing.T) {
 		for chunkIndex := 0; chunkIndex < 10; chunkIndex++ {
 			offset := chunkIndex * 32 * 1024
 			// Check pattern at start and end of each chunk
-			assert.Equal(t, byte(0), writtenBytes[offset], "Chunk %d start mismatch", chunkIndex)
-			assert.Equal(t, byte(255), writtenBytes[offset+255], "Chunk %d pattern mismatch", chunkIndex)
+			assert.Equal(t, byte(0), writtenBytes[offset], fmt.Sprintf("Chunk %d start mismatch", chunkIndex))
+			assert.Equal(t, byte(255), writtenBytes[offset+255], fmt.Sprintf("Chunk %d pattern mismatch", chunkIndex))
 		}
 
 	})
@@ -381,20 +363,20 @@ func TestDefaultReader_Skip(t *testing.T) {
 
 	t.Run("Zero", func(t *testing.T) {
 		r := NewDefaultReader(bytes.NewReader(seqBytes(10)))
-		require.NoError(t, r.Skip(0))
+		assert.Nil(t, r.Skip(0))
 		assert.Equal(t, 0, r.ReadLen())
 	})
 
 	t.Run("WithinBuffer", func(t *testing.T) {
 		r := NewDefaultReader(bytes.NewReader(seqBytes(100)))
 		_, err := r.Peek(1) // fill buffer
-		require.NoError(t, err)
+		assert.Nil(t, err)
 
-		require.NoError(t, r.Skip(10))
+		assert.Nil(t, r.Skip(10))
 		assert.Equal(t, 10, r.ReadLen())
 		buf, err := r.Peek(3)
-		require.NoError(t, err)
-		assert.Equal(t, seqBytes(13)[10:], buf)
+		assert.Nil(t, err)
+		assert.BytesEqual(t, seqBytes(13)[10:], buf)
 	})
 
 	t.Run("BeyondBufferRef", func(t *testing.T) {
@@ -404,31 +386,31 @@ func TestDefaultReader_Skip(t *testing.T) {
 
 		// Next sets ref=true
 		got, err := r.Next(10)
-		require.NoError(t, err)
+		assert.Nil(t, err)
 		want := make([]byte, 10)
 		copy(want, data[:10])
 		capBefore := cap(r.buf)
 
 		// skip beyond buffer
 		skip := defaultBufSize + 100
-		require.NoError(t, r.Skip(skip))
+		assert.Nil(t, r.Skip(skip))
 
 		// buffer pinned, not freed
 		assert.Equal(t, capBefore, cap(r.buf))
 		// old slice still valid
-		assert.Equal(t, want, got)
+		assert.BytesEqual(t, want, got)
 
 		// verify stream position
 		pos := 10 + skip
 		buf, err := r.Peek(5)
-		require.NoError(t, err)
-		assert.Equal(t, data[pos:pos+5], buf)
+		assert.Nil(t, err)
+		assert.BytesEqual(t, data[pos:pos+5], buf)
 
 		// acquire after skip pins old buffer in toFree
-		require.NoError(t, r.Skip(r.Buffered()))
+		assert.Nil(t, r.Skip(r.Buffered()))
 		_, err = r.Next(10)
-		require.NoError(t, err)
-		assert.NotEmpty(t, r.toFree)
+		assert.Nil(t, err)
+		assert.True(t, len(r.toFree) != 0)
 	})
 
 	t.Run("BeyondBufferNoRef", func(t *testing.T) {
@@ -439,29 +421,29 @@ func TestDefaultReader_Skip(t *testing.T) {
 		// ReadBinary fills buffer without setting ref
 		bs := make([]byte, 10)
 		_, err := r.ReadBinary(bs)
-		require.NoError(t, err)
-		assert.False(t, r.ref)
+		assert.Nil(t, err)
+		assert.True(t, !r.ref)
 
 		// skip beyond buffer: buf freed immediately
 		skip := defaultBufSize + 100
-		require.NoError(t, r.Skip(skip))
+		assert.Nil(t, r.Skip(skip))
 		assert.Nil(t, r.buf)
 
 		// acquire after skip does not accumulate toFree
 		pos := 10 + skip
 		buf, err := r.Next(5)
-		require.NoError(t, err)
-		assert.Empty(t, r.toFree)
-		assert.Equal(t, data[pos:pos+5], buf)
+		assert.Nil(t, err)
+		assert.True(t, len(r.toFree) == 0)
+		assert.BytesEqual(t, data[pos:pos+5], buf)
 	})
 
 	t.Run("EOF", func(t *testing.T) {
 		r := NewDefaultReader(bytes.NewReader(seqBytes(10)))
-		assert.Error(t, r.Skip(20))
+		assert.True(t, r.Skip(20) != nil)
 
 		// EOF on skipReader path (skip exceeds buffer + reader data)
 		r = NewDefaultReader(bytes.NewReader(seqBytes(100)))
-		assert.Error(t, r.Skip(defaultBufSize+100))
+		assert.True(t, r.Skip(defaultBufSize+100) != nil)
 	})
 }
 
@@ -478,13 +460,13 @@ func TestDefaultReader_ReadBinary(t *testing.T) {
 		r := NewDefaultReader(bytes.NewReader(seqBytes(100)))
 		// pre-fill buffer
 		_, err := r.Peek(1)
-		require.NoError(t, err)
+		assert.Nil(t, err)
 
 		bs := make([]byte, 10)
 		n, err := r.ReadBinary(bs)
-		require.NoError(t, err)
+		assert.Nil(t, err)
 		assert.Equal(t, 10, n)
-		assert.Equal(t, seqBytes(10), bs)
+		assert.BytesEqual(t, seqBytes(10), bs)
 	})
 
 	t.Run("SmallAcquire", func(t *testing.T) {
@@ -494,14 +476,14 @@ func TestDefaultReader_ReadBinary(t *testing.T) {
 
 		// consume most of the buffer
 		_, err := r.Next(defaultBufSize - 10)
-		require.NoError(t, err)
+		assert.Nil(t, err)
 
 		// need 100 bytes: 10 from buffer + 90 via acquire
 		bs := make([]byte, 100)
 		n, err := r.ReadBinary(bs)
-		require.NoError(t, err)
+		assert.Nil(t, err)
 		assert.Equal(t, 100, n)
-		assert.Equal(t, data[defaultBufSize-10:defaultBufSize+90], bs)
+		assert.BytesEqual(t, data[defaultBufSize-10:defaultBufSize+90], bs)
 	})
 
 	t.Run("DirectRead", func(t *testing.T) {
@@ -511,22 +493,22 @@ func TestDefaultReader_ReadBinary(t *testing.T) {
 
 		// consume entire buffer
 		_, err := r.Next(defaultBufSize)
-		require.NoError(t, err)
+		assert.Nil(t, err)
 
 		bs := make([]byte, directlyReadThreshold)
 		n, err := r.ReadBinary(bs)
-		require.NoError(t, err)
+		assert.Nil(t, err)
 		assert.Equal(t, directlyReadThreshold, n)
-		assert.Equal(t, data[defaultBufSize:], bs)
+		assert.BytesEqual(t, data[defaultBufSize:], bs)
 	})
 
 	t.Run("EOF", func(t *testing.T) {
 		r := NewDefaultReader(bytes.NewReader(seqBytes(5)))
 		bs := make([]byte, 10)
 		n, err := r.ReadBinary(bs)
-		assert.Error(t, err)
+		assert.True(t, err != nil)
 		assert.Equal(t, 5, n)
-		assert.Equal(t, seqBytes(5), bs[:5])
+		assert.BytesEqual(t, seqBytes(5), bs[:5])
 	})
 }
 
@@ -535,13 +517,13 @@ func TestDefaultReader_Read(t *testing.T) {
 		r := NewDefaultReader(bytes.NewReader(seqBytes(100)))
 		// pre-fill buffer
 		_, err := r.Peek(1)
-		require.NoError(t, err)
+		assert.Nil(t, err)
 
 		bs := make([]byte, 10)
 		n, err := r.Read(bs)
-		require.NoError(t, err)
+		assert.Nil(t, err)
 		assert.Equal(t, 10, n)
-		assert.Equal(t, seqBytes(10), bs)
+		assert.BytesEqual(t, seqBytes(10), bs)
 	})
 
 	t.Run("SmallAcquire", func(t *testing.T) {
@@ -550,9 +532,9 @@ func TestDefaultReader_Read(t *testing.T) {
 
 		bs := make([]byte, 10)
 		n, err := r.Read(bs)
-		require.NoError(t, err)
+		assert.Nil(t, err)
 		assert.True(t, n > 0 && n <= 10)
-		assert.Equal(t, seqBytes(n), bs[:n])
+		assert.BytesEqual(t, seqBytes(n), bs[:n])
 	})
 
 	t.Run("DirectRead", func(t *testing.T) {
@@ -562,16 +544,16 @@ func TestDefaultReader_Read(t *testing.T) {
 
 		bs := make([]byte, directlyReadThreshold)
 		n, err := r.Read(bs)
-		require.NoError(t, err)
+		assert.Nil(t, err)
 		assert.True(t, n > 0)
-		assert.Equal(t, data[:n], bs[:n])
+		assert.BytesEqual(t, data[:n], bs[:n])
 	})
 
 	t.Run("EOF", func(t *testing.T) {
 		r := NewDefaultReader(bytes.NewReader(seqBytes(3)))
 		// drain all data
 		_, err := r.Next(3)
-		require.NoError(t, err)
+		assert.Nil(t, err)
 
 		bs := make([]byte, 10)
 		n, err := r.Read(bs)
@@ -584,8 +566,8 @@ func TestDefaultReader_Read(t *testing.T) {
 		data := seqBytes(200)
 		r := NewDefaultReader(bytes.NewReader(data))
 		got, err := io.ReadAll(r)
-		require.NoError(t, err)
-		assert.Equal(t, data, got)
+		assert.Nil(t, err)
+		assert.BytesEqual(t, data, got)
 	})
 }
 
@@ -595,8 +577,8 @@ func TestDefaultWriter_FlushFreesToFreeOnError(t *testing.T) {
 
 	// Malloc allocates an mcache buffer tracked in toFree
 	_, err := w.Malloc(10)
-	require.NoError(t, err)
-	assert.NotEmpty(t, w.toFree)
+	assert.Nil(t, err)
+	assert.True(t, len(w.toFree) != 0)
 
 	// Flush fails on WriteTo, but toFree must still be freed
 	err = w.Flush()
@@ -617,8 +599,8 @@ func TestNewDefaultReaderSize(t *testing.T) {
 
 		// first acquire should allocate at least the custom size
 		buf, err := r.Peek(1)
-		require.NoError(t, err)
-		assert.Equal(t, data[:1], buf)
+		assert.Nil(t, err)
+		assert.BytesEqual(t, data[:1], buf)
 		assert.True(t, cap(r.buf) >= size)
 	})
 

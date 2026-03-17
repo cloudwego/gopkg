@@ -24,7 +24,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/cloudwego/gopkg/internal/assert"
 )
 
 func TestListenConnState(t *testing.T) {
@@ -158,7 +158,7 @@ func TestOnRemoteClosed_NotCalled(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	callbackMutex.Lock()
-	assert.False(t, callbackCalled, "OnRemoteClosed callback should NOT be invoked on local close")
+	assert.True(t, !callbackCalled, "OnRemoteClosed callback should NOT be invoked on local close")
 	callbackMutex.Unlock()
 
 	assert.Equal(t, StateClosed, stater.State())
@@ -296,7 +296,7 @@ func TestListenConnState_Err(t *testing.T) {
 				controlFunc: c.connControlFunc,
 			}
 			_, err := ListenConnState(conn)
-			assert.Equal(t, c.expectErr, err)
+			assert.DeepEqual(t, c.expectErr, err)
 		})
 	}
 }

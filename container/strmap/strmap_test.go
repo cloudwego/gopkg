@@ -22,8 +22,8 @@ import (
 	"runtime"
 	"testing"
 
+	"github.com/cloudwego/gopkg/internal/assert"
 	"github.com/cloudwego/gopkg/unsafex"
-	"github.com/stretchr/testify/require"
 )
 
 func randStrings(m, n int) []string {
@@ -68,24 +68,24 @@ func TestStrMap(t *testing.T) {
 	ss := randStrings(20, 100000)
 	m := newStdStrMap(ss)
 	sm := NewFromMap(m)
-	require.Equal(t, len(m), sm.Len())
+	assert.Equal(t, len(m), sm.Len())
 	for i, s := range ss {
 		v0 := m[s]
 		v1, _ := sm.Get(s)
-		require.Equal(t, v0, v1, i)
+		assert.Equal(t, v0, v1, i)
 	}
 	for i, s := range randStrings(20, 100000) {
 		v0, ok0 := m[s]
 		v1, ok1 := sm.Get(s)
-		require.Equal(t, ok0, ok1, i)
-		require.Equal(t, v0, v1, i)
+		assert.Equal(t, ok0, ok1, i)
+		assert.Equal(t, v0, v1, i)
 	}
 	m0 := make(map[string]uint)
 	for i := 0; i < sm.Len(); i++ {
 		s, v := sm.Item(i)
 		m0[s] = v
 	}
-	require.Equal(t, m, m0)
+	assert.DeepEqual(t, m, m0)
 }
 
 func TestStrMapString(t *testing.T) {
@@ -103,20 +103,20 @@ func TestStr2Str(t *testing.T) {
 
 	// from slice
 	ms := NewStr2StrFromSlice(kk, vv)
-	require.Equal(t, len(m), ms.Len())
+	assert.Equal(t, len(m), ms.Len())
 	for i, k := range kk {
 		v0 := vv[i]
 		v1, _ := ms.Get(k)
-		require.Equal(t, v0, v1, i)
+		assert.Equal(t, v0, v1, i)
 	}
 
 	// from map
 	mm := NewStr2StrFromMap(m)
-	require.Equal(t, len(m), mm.Len())
+	assert.Equal(t, len(m), mm.Len())
 	for i, k := range kk {
 		v0 := vv[i]
 		v1, _ := mm.Get(k)
-		require.Equal(t, v0, v1, i)
+		assert.Equal(t, v0, v1, i)
 	}
 }
 
@@ -128,11 +128,11 @@ func TestStr2StrLoad(t *testing.T) {
 		vv := randStrings(20, 100000)
 
 		err := str2str.LoadFromSlice(kk, vv)
-		require.NoError(t, err)
+		assert.Nil(t, err)
 		for i, k := range kk {
 			v0 := vv[i]
 			v1, _ := str2str.Get(k)
-			require.Equal(t, v0, v1, i)
+			assert.Equal(t, v0, v1, i)
 		}
 	}
 
@@ -143,11 +143,11 @@ func TestStr2StrLoad(t *testing.T) {
 		m := newStdStr2StrMap(kk, vv)
 
 		err := str2str.LoadFromMap(m)
-		require.NoError(t, err)
+		assert.Nil(t, err)
 		for i, k := range kk {
 			v0 := vv[i]
 			v1, _ := str2str.Get(k)
-			require.Equal(t, v0, v1, i)
+			assert.Equal(t, v0, v1, i)
 		}
 	}
 
@@ -156,11 +156,11 @@ func TestStr2StrLoad(t *testing.T) {
 	kk := randStrings(20, 100000)
 	vv := randStrings(20, 100000)
 	err := str2str.LoadFromSlice(kk, vv)
-	require.NoError(t, err)
+	assert.Nil(t, err)
 	for i, k := range kk {
 		v0 := vv[i]
 		v1, _ := str2str.Get(k)
-		require.Equal(t, v0, v1, i)
+		assert.Equal(t, v0, v1, i)
 	}
 }
 
