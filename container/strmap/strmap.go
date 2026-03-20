@@ -19,11 +19,11 @@ package strmap
 import (
 	"errors"
 	"fmt"
+	"hash/maphash"
 	"math"
 	"sort"
 	"strings"
 
-	"github.com/cloudwego/gopkg/internal/hash/maphash"
 	"github.com/cloudwego/gopkg/internal/strstore"
 	"github.com/cloudwego/gopkg/unsafex"
 )
