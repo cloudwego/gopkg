@@ -229,21 +229,32 @@ func (BinaryProtocol) MessageBeginLength(method string) int {
 	return 4 + (4 + len(method)) + 4
 }
 
-func (BinaryProtocol) FieldBeginLength() int           { return 3 }
-func (BinaryProtocol) FieldStopLength() int            { return 1 }
-func (BinaryProtocol) MapBeginLength() int             { return 6 }
-func (BinaryProtocol) ListBeginLength() int            { return 5 }
-func (BinaryProtocol) SetBeginLength() int             { return 5 }
-func (BinaryProtocol) BoolLength() int                 { return 1 }
-func (BinaryProtocol) ByteLength() int                 { return 1 }
-func (BinaryProtocol) I16Length() int                  { return 2 }
-func (BinaryProtocol) I32Length() int                  { return 4 }
-func (BinaryProtocol) I64Length() int                  { return 8 }
-func (BinaryProtocol) DoubleLength() int               { return 8 }
-func (BinaryProtocol) StringLength(v string) int       { return 4 + len(v) }
-func (BinaryProtocol) BinaryLength(v []byte) int       { return 4 + len(v) }
-func (BinaryProtocol) StringLengthNocopy(v string) int { return 4 + len(v) }
-func (BinaryProtocol) BinaryLengthNocopy(v []byte) int { return 4 + len(v) }
+func (BinaryProtocol) FieldBeginLength() int     { return 3 }
+func (BinaryProtocol) FieldStopLength() int      { return 1 }
+func (BinaryProtocol) MapBeginLength() int       { return 6 }
+func (BinaryProtocol) ListBeginLength() int      { return 5 }
+func (BinaryProtocol) SetBeginLength() int       { return 5 }
+func (BinaryProtocol) BoolLength() int           { return 1 }
+func (BinaryProtocol) ByteLength() int           { return 1 }
+func (BinaryProtocol) I16Length() int            { return 2 }
+func (BinaryProtocol) I32Length() int            { return 4 }
+func (BinaryProtocol) I64Length() int            { return 8 }
+func (BinaryProtocol) DoubleLength() int         { return 8 }
+func (BinaryProtocol) StringLength(v string) int { return 4 + len(v) }
+func (BinaryProtocol) BinaryLength(v []byte) int { return 4 + len(v) }
+func (BinaryProtocol) StringLengthNocopy(v string) int {
+	// FIXME: just for test. only valid in normal thrift FastCodec+netpoll
+	if len(v) < nocopyWriteThreshold {
+		return 4 + len(v)
+	}
+	return 4
+}
+func (BinaryProtocol) BinaryLengthNocopy(v []byte) int {
+	if len(v) < nocopyWriteThreshold {
+		return 4 + len(v)
+	}
+	return 4
+}
 
 // Read methods
 
