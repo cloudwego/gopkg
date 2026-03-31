@@ -127,12 +127,13 @@ func (BinaryProtocol) WriteBinary(buf, v []byte) int {
 }
 
 func (p BinaryProtocol) WriteBinaryNocopy(buf []byte, w NocopyWriter, v []byte) int {
-	if w == nil || len(v) < nocopyWriteThreshold {
-		return p.WriteBinary(buf, v)
-	}
-	binary.BigEndian.PutUint32(buf, uint32(len(v)))
-	_ = w.WriteDirect(v, len(buf[4:])) // always err == nil ?
-	return 4
+	return p.WriteBinary(buf, v)
+	//if w == nil || len(v) < nocopyWriteThreshold {
+	//	return p.WriteBinary(buf, v)
+	//}
+	//binary.BigEndian.PutUint32(buf, uint32(len(v)))
+	//_ = w.WriteDirect(v, len(buf[4:])) // always err == nil ?
+	//return 4
 }
 
 func (BinaryProtocol) WriteString(buf []byte, v string) int {
@@ -142,12 +143,13 @@ func (BinaryProtocol) WriteString(buf []byte, v string) int {
 }
 
 func (p BinaryProtocol) WriteStringNocopy(buf []byte, w NocopyWriter, v string) int {
-	if w == nil || len(v) < nocopyWriteThreshold {
-		return p.WriteString(buf, v)
-	}
-	binary.BigEndian.PutUint32(buf, uint32(len(v)))
-	_ = w.WriteDirect(unsafex.StringToBinary(v), len(buf[4:])) // always err == nil ?
-	return 4
+	return p.WriteString(buf, v)
+	//if w == nil || len(v) < nocopyWriteThreshold {
+	//	return p.WriteString(buf, v)
+	//}
+	//binary.BigEndian.PutUint32(buf, uint32(len(v)))
+	//_ = w.WriteDirect(unsafex.StringToBinary(v), len(buf[4:])) // always err == nil ?
+	//return 4
 }
 
 // Append methods
