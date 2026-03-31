@@ -245,17 +245,10 @@ func (BinaryProtocol) DoubleLength() int         { return 8 }
 func (BinaryProtocol) StringLength(v string) int { return 4 + len(v) }
 func (BinaryProtocol) BinaryLength(v []byte) int { return 4 + len(v) }
 func (BinaryProtocol) StringLengthNocopy(v string) int {
-	// FIXME: just for test. only valid in normal thrift FastCodec+netpoll
-	if len(v) < nocopyWriteThreshold {
-		return 4 + len(v)
-	}
-	return 4
+	return 4 + len(v)
 }
 func (BinaryProtocol) BinaryLengthNocopy(v []byte) int {
-	if len(v) < nocopyWriteThreshold {
-		return 4 + len(v)
-	}
-	return 4
+	return 4 + len(v)
 }
 
 // Read methods
