@@ -134,6 +134,12 @@ func IsTTHeader(flagBuf []byte) bool {
 }
 
 func readKVInfo(idx int, buf []byte) (intKVMap map[uint16]string, strKVMap map[string]string, err error) {
+	// realloc all the strings all at once
+	buf2 := make([]byte, len(buf)-idx)
+	copy(buf2, buf[idx:])
+	idx = 0
+	buf = buf2
+	// iter throght the buffer to read kv info
 	for {
 		var infoID uint8
 		infoID, err = Bytes2Uint8(buf, idx)
@@ -187,13 +193,14 @@ func readIntKVInfo(idx *int, buf []byte, info map[uint16]string) (has bool, err 
 	if kvSize <= 0 {
 		return false, nil
 	}
+
 	for i := uint16(0); i < kvSize; i++ {
 		key, err := Bytes2Uint16(buf, *idx)
 		*idx += 2
 		if err != nil {
 			return false, fmt.Errorf("error reading int kv info: %s", err.Error())
 		}
-		val, n, err := ReadString2BLen(buf, *idx)
+		val, n, err := ReadString2BLenUnsafe(buf, *idx)
 		*idx += n
 		if err != nil {
 			return false, fmt.Errorf("error reading int kv info: %s", err.Error())
@@ -212,13 +219,14 @@ func readStrKVInfo(idx *int, buf []byte, info map[string]string) (has bool, err 
 	if kvSize <= 0 {
 		return false, nil
 	}
+
 	for i := uint16(0); i < kvSize; i++ {
-		key, n, err := ReadString2BLen(buf, *idx)
+		key, n, err := ReadString2BLenUnsafe(buf, *idx)
 		*idx += n
 		if err != nil {
 			return false, fmt.Errorf("error reading str kv info: %s", err.Error())
 		}
-		val, n, err := ReadString2BLen(buf, *idx)
+		val, n, err := ReadString2BLenUnsafe(buf, *idx)
 		*idx += n
 		if err != nil {
 			return false, fmt.Errorf("error reading str kv info: %s", err.Error())
@@ -230,7 +238,7 @@ func readStrKVInfo(idx *int, buf []byte, info map[string]string) (has bool, err 
 
 // readACLToken reads acl token
 func readACLToken(idx *int, buf []byte, info map[string]string) error {
-	val, n, err := ReadString2BLen(buf, *idx)
+	val, n, err := ReadString2BLenUnsafe(buf, *idx)
 	*idx += n
 	if err != nil {
 		return fmt.Errorf("error reading acl token: %s", err.Error())

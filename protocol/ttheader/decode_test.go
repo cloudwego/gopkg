@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -120,5 +121,37 @@ func TestDecodeHeaderSizeCheck(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func BenchmarkDecodeFromBytes_16Fields(b *testing.B) {
+	strInfo := make(map[string]string, 16)
+	for i := 0; i < 16; i++ {
+		strInfo["key"+strconv.Itoa(i)] = "value" + strconv.Itoa(i)
+	}
+
+	encodeParam := EncodeParam{
+		SeqID:      1,
+		ProtocolID: ProtocolIDThriftBinary,
+		StrInfo:    strInfo,
+	}
+
+	// Pre-generate the byte payload
+	buf, err := EncodeToBytes(context.Background(), encodeParam)
+	if err != nil {
+		b.Fatalf("failed to encode: %v", err)
+	}
+	// Set the total length field correctly as EncodeToBytes typically expects the caller to fill the first 4 bytes
+	binary.BigEndian.PutUint32(buf, uint32(len(buf)-4))
+
+	ctx := context.Background()
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		_, err := DecodeFromBytes(ctx, buf)
+		if err != nil {
+			b.Fatalf("failed to decode: %v", err)
+		}
 	}
 }
