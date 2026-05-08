@@ -71,7 +71,7 @@ func ReadString2BLen(bytes []byte, off int) (string, int, error) {
 	return string(buf), int(length) + 2, nil
 }
 
-func ReadString2BLenUnsafe(bytes []byte, off int) (string, int, error) {
+func readString2BLenUnsafe(bytes []byte, off int) (string, int, error) {
 	length, err := Bytes2Uint16(bytes, off)
 	strLen := int(length)
 	if err != nil {

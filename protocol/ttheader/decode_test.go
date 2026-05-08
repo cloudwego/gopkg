@@ -124,24 +124,72 @@ func TestDecodeHeaderSizeCheck(t *testing.T) {
 	}
 }
 
-func BenchmarkDecodeFromBytes_16Fields(b *testing.B) {
-	strInfo := make(map[string]string, 16)
-	for i := 0; i < 16; i++ {
-		strInfo["key"+strconv.Itoa(i)] = "value" + strconv.Itoa(i)
+func BenchmarkDecodeFromBytes(b *testing.B) {
+	sizes := []int{16, 64, 512}
+
+	for _, n := range sizes {
+		b.Run("StrInfo_"+strconv.Itoa(n)+"Fields", func(b *testing.B) {
+			benchmarkDecodeFromBytes(b, EncodeParam{
+				SeqID:      1,
+				ProtocolID: ProtocolIDThriftBinary,
+				StrInfo:    makeStrInfo(n, false),
+			})
+		})
 	}
 
-	encodeParam := EncodeParam{
-		SeqID:      1,
-		ProtocolID: ProtocolIDThriftBinary,
-		StrInfo:    strInfo,
+	for _, n := range sizes {
+		b.Run("IntInfo_"+strconv.Itoa(n)+"Fields", func(b *testing.B) {
+			benchmarkDecodeFromBytes(b, EncodeParam{
+				SeqID:      1,
+				ProtocolID: ProtocolIDThriftBinary,
+				IntInfo:    makeIntInfo(n),
+			})
+		})
 	}
 
-	// Pre-generate the byte payload
-	buf, err := EncodeToBytes(context.Background(), encodeParam)
+	// Mixed Str + Int with equal field counts.
+	for _, n := range sizes {
+		b.Run("StrAndIntInfo_"+strconv.Itoa(n)+"Fields", func(b *testing.B) {
+			benchmarkDecodeFromBytes(b, EncodeParam{
+				SeqID:      1,
+				ProtocolID: ProtocolIDThriftBinary,
+				StrInfo:    makeStrInfo(n, false),
+				IntInfo:    makeIntInfo(n),
+			})
+		})
+	}
+
+	// Str + GDPR token: encoder writes a separate InfoIDACLToken segment that
+	// shares strKVMap, exercising the +1 size hint path in readStrKVInfo.
+	for _, n := range sizes {
+		b.Run("StrInfoWithGDPR_"+strconv.Itoa(n)+"Fields", func(b *testing.B) {
+			benchmarkDecodeFromBytes(b, EncodeParam{
+				SeqID:      1,
+				ProtocolID: ProtocolIDThriftBinary,
+				StrInfo:    makeStrInfo(n, true),
+			})
+		})
+	}
+
+	// Full mix: Str + Int + GDPR token.
+	for _, n := range sizes {
+		b.Run("MixedAll_"+strconv.Itoa(n)+"Fields", func(b *testing.B) {
+			benchmarkDecodeFromBytes(b, EncodeParam{
+				SeqID:      1,
+				ProtocolID: ProtocolIDThriftBinary,
+				StrInfo:    makeStrInfo(n, true),
+				IntInfo:    makeIntInfo(n),
+			})
+		})
+	}
+}
+
+func benchmarkDecodeFromBytes(b *testing.B, param EncodeParam) {
+	buf, err := EncodeToBytes(context.Background(), param)
 	if err != nil {
 		b.Fatalf("failed to encode: %v", err)
 	}
-	// Set the total length field correctly as EncodeToBytes typically expects the caller to fill the first 4 bytes
+	// EncodeToBytes leaves the first 4 bytes (total length) for the caller to fill.
 	binary.BigEndian.PutUint32(buf, uint32(len(buf)-4))
 
 	ctx := context.Background()
@@ -149,9 +197,31 @@ func BenchmarkDecodeFromBytes_16Fields(b *testing.B) {
 	b.ReportAllocs()
 
 	for i := 0; i < b.N; i++ {
-		_, err := DecodeFromBytes(ctx, buf)
-		if err != nil {
+		if _, err := DecodeFromBytes(ctx, buf); err != nil {
 			b.Fatalf("failed to decode: %v", err)
 		}
 	}
+}
+
+func makeStrInfo(n int, withGDPRToken bool) map[string]string {
+	size := n
+	if withGDPRToken {
+		size++
+	}
+	m := make(map[string]string, size)
+	for i := 0; i < n; i++ {
+		m["key"+strconv.Itoa(i)] = "value" + strconv.Itoa(i)
+	}
+	if withGDPRToken {
+		m[GDPRToken] = "gdpr_token_xxxxxxxx"
+	}
+	return m
+}
+
+func makeIntInfo(n int) map[uint16]string {
+	m := make(map[uint16]string, n)
+	for i := 0; i < n; i++ {
+		m[uint16(i)] = "value" + strconv.Itoa(i)
+	}
+	return m
 }

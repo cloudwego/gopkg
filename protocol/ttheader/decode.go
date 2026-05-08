@@ -139,7 +139,17 @@ func readKVInfo(idx int, buf []byte) (intKVMap map[uint16]string, strKVMap map[s
 	copy(buf2, buf[idx:])
 	idx = 0
 	buf = buf2
-	// iter throght the buffer to read kv info
+
+	// ACL token (if present) is stored in strKVMap, but the encoder writes it
+	// as a separate InfoIDACLToken segment that comes BEFORE InfoIDKeyValue.
+	// Defer materializing the ACL entry into strKVMap until after we've parsed
+	// any InfoIDKeyValue segment, so that strKVMap is allocated with the right
+	// size hint by readStrKVInfo (which already reserves +1 slot for the token).
+	var (
+		hasACLToken bool
+		aclToken    string
+	)
+	// iter through the buffer to read kv info
 	for {
 		var infoID uint8
 		infoID, err = Bytes2Uint8(buf, idx)
@@ -149,42 +159,46 @@ func readKVInfo(idx int, buf []byte) (intKVMap map[uint16]string, strKVMap map[s
 			if err == io.EOF {
 				err = nil
 			}
-			return
+			break
 		}
 		switch InfoIDType(infoID) {
 		case InfoIDPadding:
 			continue
 		case InfoIDKeyValue:
-			if strKVMap == nil {
-				strKVMap = make(map[string]string)
-			}
-			_, err = readStrKVInfo(&idx, buf, strKVMap)
+			_, err = readStrKVInfo(&idx, buf, &strKVMap)
 			if err != nil {
 				return
 			}
 		case InfoIDIntKeyValue:
-			if intKVMap == nil {
-				intKVMap = make(map[uint16]string)
-			}
-			_, err = readIntKVInfo(&idx, buf, intKVMap)
+			_, err = readIntKVInfo(&idx, buf, &intKVMap)
 			if err != nil {
 				return
 			}
 		case InfoIDACLToken:
-			if strKVMap == nil {
-				strKVMap = make(map[string]string)
-			}
-			if err = readACLToken(&idx, buf, strKVMap); err != nil {
+			var n int
+			aclToken, n, err = readString2BLenUnsafe(buf, idx)
+			if err != nil {
+				err = fmt.Errorf("error reading acl token: %s", err.Error())
 				return
 			}
+			idx += n
+			hasACLToken = true
 		default:
 			err = fmt.Errorf("invalid infoIDType[%#x]", infoID)
 			return
 		}
 	}
+
+	if hasACLToken {
+		if strKVMap == nil {
+			strKVMap = make(map[string]string, 1)
+		}
+		strKVMap[GDPRToken] = aclToken
+	}
+	return
 }
 
-func readIntKVInfo(idx *int, buf []byte, info map[uint16]string) (has bool, err error) {
+func readIntKVInfo(idx *int, buf []byte, infoPtr *map[uint16]string) (has bool, err error) {
 	kvSize, err := Bytes2Uint16(buf, *idx)
 	*idx += 2
 	if err != nil {
@@ -194,13 +208,20 @@ func readIntKVInfo(idx *int, buf []byte, info map[uint16]string) (has bool, err 
 		return false, nil
 	}
 
+	// Allocate the map lazily with kvSize as the size hint to avoid
+	// the runtime growing the map's bucket array as entries are inserted.
+	info := *infoPtr
+	if info == nil {
+		info = make(map[uint16]string, int(kvSize))
+		*infoPtr = info
+	}
 	for i := uint16(0); i < kvSize; i++ {
 		key, err := Bytes2Uint16(buf, *idx)
 		*idx += 2
 		if err != nil {
 			return false, fmt.Errorf("error reading int kv info: %s", err.Error())
 		}
-		val, n, err := ReadString2BLenUnsafe(buf, *idx)
+		val, n, err := readString2BLenUnsafe(buf, *idx)
 		*idx += n
 		if err != nil {
 			return false, fmt.Errorf("error reading int kv info: %s", err.Error())
@@ -210,7 +231,7 @@ func readIntKVInfo(idx *int, buf []byte, info map[uint16]string) (has bool, err 
 	return true, nil
 }
 
-func readStrKVInfo(idx *int, buf []byte, info map[string]string) (has bool, err error) {
+func readStrKVInfo(idx *int, buf []byte, infoPtr *map[string]string) (has bool, err error) {
 	kvSize, err := Bytes2Uint16(buf, *idx)
 	*idx += 2
 	if err != nil {
@@ -220,13 +241,23 @@ func readStrKVInfo(idx *int, buf []byte, info map[string]string) (has bool, err 
 		return false, nil
 	}
 
+	// Allocate the map lazily with kvSize+1 as the size hint to avoid the
+	// runtime growing the map's bucket array as entries are inserted. The +1
+	// reserves room for a possible GDPR token (InfoIDACLToken segment) that
+	// shares this same strKVMap; spending one extra slot when there's no
+	// token is cheaper than letting the map grow when there is one.
+	info := *infoPtr
+	if info == nil {
+		info = make(map[string]string, int(kvSize)+1)
+		*infoPtr = info
+	}
 	for i := uint16(0); i < kvSize; i++ {
-		key, n, err := ReadString2BLenUnsafe(buf, *idx)
+		key, n, err := readString2BLenUnsafe(buf, *idx)
 		*idx += n
 		if err != nil {
 			return false, fmt.Errorf("error reading str kv info: %s", err.Error())
 		}
-		val, n, err := ReadString2BLenUnsafe(buf, *idx)
+		val, n, err := readString2BLenUnsafe(buf, *idx)
 		*idx += n
 		if err != nil {
 			return false, fmt.Errorf("error reading str kv info: %s", err.Error())
@@ -234,17 +265,6 @@ func readStrKVInfo(idx *int, buf []byte, info map[string]string) (has bool, err 
 		info[key] = val
 	}
 	return true, nil
-}
-
-// readACLToken reads acl token
-func readACLToken(idx *int, buf []byte, info map[string]string) error {
-	val, n, err := ReadString2BLenUnsafe(buf, *idx)
-	*idx += n
-	if err != nil {
-		return fmt.Errorf("error reading acl token: %s", err.Error())
-	}
-	info[GDPRToken] = val
-	return nil
 }
 
 // protoID just for ttheader
