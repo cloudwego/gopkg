@@ -175,6 +175,17 @@ func TestSkipDecoder(t *testing.T) {
 		// unknown type
 		_, err = r.Next(TType(122))
 		assert.True(t, err != nil)
+
+		// invalid negative type
+		r = NewSkipDecoder(bufiox.NewBytesReader([]byte{0}))
+		_, err = r.Next(TType(-106))
+		assert.True(t, err != nil)
+
+		// invalid negative nested type
+		invalidType := byte(150) // int8(150) == -106
+		r = NewSkipDecoder(bufiox.NewBytesReader([]byte{invalidType, 0, 1, 0}))
+		_, err = r.Next(STRUCT)
+		assert.True(t, err != nil)
 	}
 }
 

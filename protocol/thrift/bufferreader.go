@@ -258,7 +258,7 @@ func (r *BufferReader) skipType(t TType, maxdepth int) error {
 	if maxdepth == 0 {
 		return errDepthLimitExceeded
 	}
-	if n := typeToSize[t]; n > 0 {
+	if n := typeSize(t); n > 0 {
 		return r.skipn(int(n))
 	}
 	switch t {
@@ -272,7 +272,7 @@ func (r *BufferReader) skipType(t TType, maxdepth int) error {
 		if sz < 0 {
 			return errDataLength
 		}
-		ksz, vsz := int(typeToSize[kt]), int(typeToSize[vt])
+		ksz, vsz := int(typeSize(kt)), int(typeSize(vt))
 		if ksz > 0 && vsz > 0 {
 			return r.skipn(sz * (ksz + vsz))
 		}
@@ -307,7 +307,7 @@ func (r *BufferReader) skipType(t TType, maxdepth int) error {
 		if sz < 0 {
 			return errDataLength
 		}
-		if vsz := typeToSize[vt]; vsz > 0 {
+		if vsz := typeSize(vt); vsz > 0 {
 			return r.skipn(sz * int(vsz))
 		}
 		for j := 0; j < sz; j++ {
@@ -330,7 +330,7 @@ func (r *BufferReader) skipType(t TType, maxdepth int) error {
 			if ft == STOP {
 				return nil
 			}
-			if fsz := typeToSize[ft]; fsz > 0 {
+			if fsz := typeSize(ft); fsz > 0 {
 				err = r.skipn(int(fsz))
 			} else {
 				err = r.skipType(ft, maxdepth-1)

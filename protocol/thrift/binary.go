@@ -448,6 +448,10 @@ var typeToSize = [256]int8{
 	I64:    8,
 }
 
+func typeSize(t TType) int8 {
+	return typeToSize[uint8(t)]
+}
+
 func skipstr(p unsafe.Pointer, e uintptr) (int, error) {
 	if uintptr(p)+uintptr(4) <= e {
 		n := int(p2i32(p))
@@ -475,7 +479,7 @@ func skipType(p unsafe.Pointer, e uintptr, t TType, maxdepth int) (int, error) {
 	if maxdepth == 0 {
 		return 0, errDepthLimitExceeded
 	}
-	if n := typeToSize[t]; n > 0 {
+	if n := typeSize(t); n > 0 {
 		if uintptr(p)+uintptr(n) > e {
 			return 0, errBufferTooShort
 		}
@@ -493,7 +497,7 @@ func skipType(p unsafe.Pointer, e uintptr, t TType, maxdepth int) (int, error) {
 		if sz < 0 {
 			return 0, errDataLength
 		}
-		ksz, vsz := int(typeToSize[kt]), int(typeToSize[vt])
+		ksz, vsz := int(typeSize(kt)), int(typeSize(vt))
 		if ksz > 0 && vsz > 0 { // fast path, fast skip
 			mapkvsize := (int(sz) * (ksz + vsz))
 			if uintptr(p)+uintptr(6+mapkvsize) > e {
@@ -543,7 +547,7 @@ func skipType(p unsafe.Pointer, e uintptr, t TType, maxdepth int) (int, error) {
 		if sz < 0 {
 			return 0, errDataLength
 		}
-		vsz := int(typeToSize[vt])
+		vsz := int(typeSize(vt))
 		if vsz > 0 { // fast path, fast skip
 			listvsize := int(sz) * vsz
 			if uintptr(p)+uintptr(5+listvsize) > e {
@@ -586,8 +590,8 @@ func skipType(p unsafe.Pointer, e uintptr, t TType, maxdepth int) (int, error) {
 				return i, errBufferTooShort
 			}
 			fi := 0
-			if typeToSize[ft] > 0 {
-				fi = int(typeToSize[ft])
+			if typeSize(ft) > 0 {
+				fi = int(typeSize(ft))
 			} else if ft == STRING {
 				fi, err = skipstr(unsafe.Add(p, i), e)
 			} else {
