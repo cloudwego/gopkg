@@ -255,5 +255,16 @@ func TestBinaryReaderSkip(t *testing.T) {
 		// unknown type
 		err = r.Skip(TType(122))
 		assert.True(t, err != nil)
+
+		// invalid negative type
+		r = NewBufferReader(bufiox.NewBytesReader([]byte{0}))
+		err = r.Skip(TType(-106))
+		assert.True(t, err != nil)
+
+		// invalid negative nested type
+		invalidType := byte(150) // int8(150) == -106
+		r = NewBufferReader(bufiox.NewBytesReader([]byte{invalidType, 0, 1, 0}))
+		err = r.Skip(STRUCT)
+		assert.True(t, err != nil)
 	}
 }

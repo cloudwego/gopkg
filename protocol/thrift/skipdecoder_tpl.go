@@ -40,7 +40,7 @@ func skipDecoderImpl[T skipDecoderIface](r T, t TType, maxdepth int) error {
 	if maxdepth == 0 {
 		return errDepthLimitExceeded
 	}
-	if sz := typeToSize[t]; sz > 0 {
+	if sz := typeSize(t); sz > 0 {
 		_, err := r.SkipN(int(sz))
 		return err
 	}
@@ -67,7 +67,7 @@ func skipDecoderImpl[T skipDecoderIface](r T, t TType, maxdepth int) error {
 			if tp == STOP {
 				break
 			}
-			if sz := typeToSize[tp]; sz > 0 {
+			if sz := typeSize(tp); sz > 0 {
 				// fastpath
 				// Field ID + Value
 				if _, err := r.SkipN(2 + int(sz)); err != nil {
@@ -94,7 +94,7 @@ func skipDecoderImpl[T skipDecoderIface](r T, t TType, maxdepth int) error {
 		if sz < 0 {
 			return errDataLength
 		}
-		ksz, vsz := int(typeToSize[kt]), int(typeToSize[vt])
+		ksz, vsz := int(typeSize(kt)), int(typeSize(vt))
 		if ksz > 0 && vsz > 0 {
 			_, err := r.SkipN(int(sz) * (ksz + vsz))
 			return err
@@ -128,7 +128,7 @@ func skipDecoderImpl[T skipDecoderIface](r T, t TType, maxdepth int) error {
 		if sz < 0 {
 			return errDataLength
 		}
-		if vsz := typeToSize[vt]; vsz > 0 {
+		if vsz := typeSize(vt); vsz > 0 {
 			_, err := r.SkipN(int(sz) * int(vsz))
 			return err
 		}

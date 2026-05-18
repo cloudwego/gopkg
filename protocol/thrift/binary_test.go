@@ -454,6 +454,19 @@ func TestBinarySkip(t *testing.T) {
 	// unknown type
 	_, err = Binary.Skip(b, TType(122))
 	assert.True(t, err != nil)
+
+	// invalid negative type
+	_, err = Binary.Skip([]byte{0}, TType(-106))
+	assert.True(t, err != nil)
+
+	// invalid negative nested types
+	invalidType := byte(150) // int8(150) == -106
+	_, err = Binary.Skip([]byte{invalidType, 0, 1, 0}, STRUCT)
+	assert.True(t, err != nil)
+	_, err = Binary.Skip([]byte{invalidType, byte(I32), 0, 0, 0, 1, 0, 0, 0, 1}, MAP)
+	assert.True(t, err != nil)
+	_, err = Binary.Skip([]byte{invalidType, 0, 0, 0, 1}, LIST)
+	assert.True(t, err != nil)
 }
 
 func TestNocopyWrite(t *testing.T) {
