@@ -44,6 +44,6 @@ func createPoller() {
 	}
 	go func() {
 		err := poll.wait()
-		fmt.Printf("gopkg.connstate epoll wait exit, err: %v\n", err)
+		fmt.Printf("gopkg.connstate poll wait exit, err: %v\n", err)
 	}()
 }
