@@ -126,65 +126,114 @@ func TestDecodeHeaderSizeCheck(t *testing.T) {
 
 func BenchmarkDecodeFromBytes(b *testing.B) {
 	sizes := []int{16, 64, 512}
-
-	for _, n := range sizes {
-		b.Run("StrInfo_"+strconv.Itoa(n)+"Fields", func(b *testing.B) {
-			benchmarkDecodeFromBytes(b, EncodeParam{
-				SeqID:      1,
-				ProtocolID: ProtocolIDThriftBinary,
-				StrInfo:    makeStrInfo(n, false),
-			})
-		})
+	modes := []struct {
+		name string
+		opts []DecodeOption
+	}{
+		{name: "SafeCopy", opts: nil},
+		{name: "BulkUnsafe", opts: []DecodeOption{WithBulkStringAlloc(true)}},
 	}
 
-	for _, n := range sizes {
-		b.Run("IntInfo_"+strconv.Itoa(n)+"Fields", func(b *testing.B) {
-			benchmarkDecodeFromBytes(b, EncodeParam{
-				SeqID:      1,
-				ProtocolID: ProtocolIDThriftBinary,
-				IntInfo:    makeIntInfo(n),
+	for _, mode := range modes {
+		for _, n := range sizes {
+			b.Run(mode.name+"/StrInfo_"+strconv.Itoa(n)+"Fields", func(b *testing.B) {
+				benchmarkDecodeFromBytes(b, EncodeParam{
+					SeqID:      1,
+					ProtocolID: ProtocolIDThriftBinary,
+					StrInfo:    makeStrInfo(n, false),
+				}, mode.opts...)
 			})
-		})
-	}
+		}
 
-	// Mixed Str + Int with equal field counts.
-	for _, n := range sizes {
-		b.Run("StrAndIntInfo_"+strconv.Itoa(n)+"Fields", func(b *testing.B) {
-			benchmarkDecodeFromBytes(b, EncodeParam{
-				SeqID:      1,
-				ProtocolID: ProtocolIDThriftBinary,
-				StrInfo:    makeStrInfo(n, false),
-				IntInfo:    makeIntInfo(n),
+		for _, n := range sizes {
+			b.Run(mode.name+"/IntInfo_"+strconv.Itoa(n)+"Fields", func(b *testing.B) {
+				benchmarkDecodeFromBytes(b, EncodeParam{
+					SeqID:      1,
+					ProtocolID: ProtocolIDThriftBinary,
+					IntInfo:    makeIntInfo(n),
+				}, mode.opts...)
 			})
-		})
-	}
+		}
 
-	// Str + GDPR token: encoder writes a separate InfoIDACLToken segment that
-	// shares strKVMap, exercising the +1 size hint path in readStrKVInfo.
-	for _, n := range sizes {
-		b.Run("StrInfoWithGDPR_"+strconv.Itoa(n)+"Fields", func(b *testing.B) {
-			benchmarkDecodeFromBytes(b, EncodeParam{
-				SeqID:      1,
-				ProtocolID: ProtocolIDThriftBinary,
-				StrInfo:    makeStrInfo(n, true),
+		// Mixed Str + Int with equal field counts.
+		for _, n := range sizes {
+			b.Run(mode.name+"/StrAndIntInfo_"+strconv.Itoa(n)+"Fields", func(b *testing.B) {
+				benchmarkDecodeFromBytes(b, EncodeParam{
+					SeqID:      1,
+					ProtocolID: ProtocolIDThriftBinary,
+					StrInfo:    makeStrInfo(n, false),
+					IntInfo:    makeIntInfo(n),
+				}, mode.opts...)
 			})
-		})
-	}
+		}
 
-	// Full mix: Str + Int + GDPR token.
-	for _, n := range sizes {
-		b.Run("MixedAll_"+strconv.Itoa(n)+"Fields", func(b *testing.B) {
-			benchmarkDecodeFromBytes(b, EncodeParam{
-				SeqID:      1,
-				ProtocolID: ProtocolIDThriftBinary,
-				StrInfo:    makeStrInfo(n, true),
-				IntInfo:    makeIntInfo(n),
+		// Str + GDPR token: encoder writes a separate InfoIDACLToken segment that
+		// shares strKVMap, exercising the +1 size hint path in readStrKVInfo.
+		for _, n := range sizes {
+			b.Run(mode.name+"/StrInfoWithGDPR_"+strconv.Itoa(n)+"Fields", func(b *testing.B) {
+				benchmarkDecodeFromBytes(b, EncodeParam{
+					SeqID:      1,
+					ProtocolID: ProtocolIDThriftBinary,
+					StrInfo:    makeStrInfo(n, true),
+				}, mode.opts...)
 			})
-		})
+		}
+
+		// Full mix: Str + Int + GDPR token.
+		for _, n := range sizes {
+			b.Run(mode.name+"/MixedAll_"+strconv.Itoa(n)+"Fields", func(b *testing.B) {
+				benchmarkDecodeFromBytes(b, EncodeParam{
+					SeqID:      1,
+					ProtocolID: ProtocolIDThriftBinary,
+					StrInfo:    makeStrInfo(n, true),
+					IntInfo:    makeIntInfo(n),
+				}, mode.opts...)
+			})
+		}
 	}
 }
 
-func benchmarkDecodeFromBytes(b *testing.B, param EncodeParam) {
+func TestDecodeBulkStringAllocMatchesSafe(t *testing.T) {
+	param := EncodeParam{
+		SeqID:      42,
+		ProtocolID: ProtocolIDThriftBinary,
+		StrInfo:    makeStrInfo(8, true),
+		IntInfo:    makeIntInfo(8),
+	}
+	buf, err := EncodeToBytes(context.Background(), param)
+	if err != nil {
+		t.Fatalf("encode: %v", err)
+	}
+	binary.BigEndian.PutUint32(buf, uint32(len(buf)-4))
+
+	safe, err := DecodeFromBytes(context.Background(), buf)
+	if err != nil {
+		t.Fatalf("safe decode: %v", err)
+	}
+	bulk, err := DecodeFromBytes(context.Background(), buf, WithBulkStringAlloc(true))
+	if err != nil {
+		t.Fatalf("bulk decode: %v", err)
+	}
+	if safe.SeqID != bulk.SeqID || safe.ProtocolID != bulk.ProtocolID {
+		t.Fatalf("meta mismatch: safe=%+v bulk=%+v", safe, bulk)
+	}
+	if len(safe.StrInfo) != len(bulk.StrInfo) || len(safe.IntInfo) != len(bulk.IntInfo) {
+		t.Fatalf("map size mismatch str %d/%d int %d/%d",
+			len(safe.StrInfo), len(bulk.StrInfo), len(safe.IntInfo), len(bulk.IntInfo))
+	}
+	for k, v := range safe.StrInfo {
+		if bulk.StrInfo[k] != v {
+			t.Fatalf("StrInfo[%q]: safe=%q bulk=%q", k, v, bulk.StrInfo[k])
+		}
+	}
+	for k, v := range safe.IntInfo {
+		if bulk.IntInfo[k] != v {
+			t.Fatalf("IntInfo[%d]: safe=%q bulk=%q", k, v, bulk.IntInfo[k])
+		}
+	}
+}
+
+func benchmarkDecodeFromBytes(b *testing.B, param EncodeParam, opts ...DecodeOption) {
 	buf, err := EncodeToBytes(context.Background(), param)
 	if err != nil {
 		b.Fatalf("failed to encode: %v", err)
@@ -197,7 +246,7 @@ func benchmarkDecodeFromBytes(b *testing.B, param EncodeParam) {
 	b.ReportAllocs()
 
 	for i := 0; i < b.N; i++ {
-		if _, err := DecodeFromBytes(ctx, buf); err != nil {
+		if _, err := DecodeFromBytes(ctx, buf, opts...); err != nil {
 			b.Fatalf("failed to decode: %v", err)
 		}
 	}

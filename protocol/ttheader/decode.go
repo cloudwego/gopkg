@@ -57,15 +57,18 @@ type DecodeParam struct {
 }
 
 // DecodeFromBytes decodes ttheader param from bytes.
-func DecodeFromBytes(ctx context.Context, bs []byte) (param DecodeParam, err error) {
+func DecodeFromBytes(ctx context.Context, bs []byte, opts ...DecodeOption) (param DecodeParam, err error) {
 	in := bufiox.NewBytesReader(bs)
-	param, err = Decode(ctx, in)
+	param, err = Decode(ctx, in, opts...)
 	_ = in.Release(nil)
 	return
 }
 
 // Decode decodes ttheader param from bufiox.Reader.
-func Decode(ctx context.Context, in bufiox.Reader) (param DecodeParam, err error) {
+// Optional DecodeOption values control string allocation strategy; see WithBulkStringAlloc.
+func Decode(ctx context.Context, in bufiox.Reader, opts ...DecodeOption) (param DecodeParam, err error) {
+	cfg := applyDecodeOptions(opts)
+
 	var headerMeta []byte
 	headerMeta, err = in.Next(TTHeaderMetaSize)
 	if err != nil {
@@ -110,7 +113,7 @@ func Decode(ctx context.Context, in bufiox.Reader) (param DecodeParam, err error
 		hdIdx++
 	}
 
-	param.IntInfo, param.StrInfo, err = readKVInfo(hdIdx, headerInfo)
+	param.IntInfo, param.StrInfo, err = readKVInfo(hdIdx, headerInfo, cfg)
 	if err != nil {
 		err = fmt.Errorf("ttHeader read kv info failed, %s, headerInfo=%#x", err.Error(), headerInfo)
 		return
@@ -133,12 +136,19 @@ func IsTTHeader(flagBuf []byte) bool {
 	return binary.BigEndian.Uint32(flagBuf[Size32:])&MagicMask == TTHeaderMagic
 }
 
-func readKVInfo(idx int, buf []byte) (intKVMap map[uint16]string, strKVMap map[string]string, err error) {
-	// realloc all the strings all at once
-	buf2 := make([]byte, len(buf)-idx)
-	copy(buf2, buf[idx:])
-	idx = 0
-	buf = buf2
+type readString2BLenFunc func(bytes []byte, off int) (string, int, error)
+
+func readKVInfo(idx int, buf []byte, cfg DecodeConfig) (intKVMap map[uint16]string, strKVMap map[string]string, err error) {
+	readStr := ReadString2BLen
+	if cfg.BulkStringAlloc {
+		// Own a single copy of the remaining KV region, then slice strings with
+		// unsafex so N fields share one backing allocation instead of N copies.
+		buf2 := make([]byte, len(buf)-idx)
+		copy(buf2, buf[idx:])
+		idx = 0
+		buf = buf2
+		readStr = readString2BLenUnsafe
+	}
 
 	// ACL token (if present) is stored in strKVMap, but the encoder writes it
 	// as a separate InfoIDACLToken segment that comes BEFORE InfoIDKeyValue.
@@ -165,18 +175,18 @@ func readKVInfo(idx int, buf []byte) (intKVMap map[uint16]string, strKVMap map[s
 		case InfoIDPadding:
 			continue
 		case InfoIDKeyValue:
-			_, err = readStrKVInfo(&idx, buf, &strKVMap)
+			_, err = readStrKVInfo(&idx, buf, &strKVMap, readStr)
 			if err != nil {
 				return
 			}
 		case InfoIDIntKeyValue:
-			_, err = readIntKVInfo(&idx, buf, &intKVMap)
+			_, err = readIntKVInfo(&idx, buf, &intKVMap, readStr)
 			if err != nil {
 				return
 			}
 		case InfoIDACLToken:
 			var n int
-			aclToken, n, err = readString2BLenUnsafe(buf, idx)
+			aclToken, n, err = readStr(buf, idx)
 			if err != nil {
 				err = fmt.Errorf("error reading acl token: %s", err.Error())
 				return
@@ -198,7 +208,7 @@ func readKVInfo(idx int, buf []byte) (intKVMap map[uint16]string, strKVMap map[s
 	return
 }
 
-func readIntKVInfo(idx *int, buf []byte, infoPtr *map[uint16]string) (has bool, err error) {
+func readIntKVInfo(idx *int, buf []byte, infoPtr *map[uint16]string, readStr readString2BLenFunc) (has bool, err error) {
 	kvSize, err := Bytes2Uint16(buf, *idx)
 	*idx += 2
 	if err != nil {
@@ -221,7 +231,7 @@ func readIntKVInfo(idx *int, buf []byte, infoPtr *map[uint16]string) (has bool, 
 		if err != nil {
 			return false, fmt.Errorf("error reading int kv info: %s", err.Error())
 		}
-		val, n, err := readString2BLenUnsafe(buf, *idx)
+		val, n, err := readStr(buf, *idx)
 		*idx += n
 		if err != nil {
 			return false, fmt.Errorf("error reading int kv info: %s", err.Error())
@@ -231,7 +241,7 @@ func readIntKVInfo(idx *int, buf []byte, infoPtr *map[uint16]string) (has bool, 
 	return true, nil
 }
 
-func readStrKVInfo(idx *int, buf []byte, infoPtr *map[string]string) (has bool, err error) {
+func readStrKVInfo(idx *int, buf []byte, infoPtr *map[string]string, readStr readString2BLenFunc) (has bool, err error) {
 	kvSize, err := Bytes2Uint16(buf, *idx)
 	*idx += 2
 	if err != nil {
@@ -252,12 +262,12 @@ func readStrKVInfo(idx *int, buf []byte, infoPtr *map[string]string) (has bool, 
 		*infoPtr = info
 	}
 	for i := uint16(0); i < kvSize; i++ {
-		key, n, err := readString2BLenUnsafe(buf, *idx)
+		key, n, err := readStr(buf, *idx)
 		*idx += n
 		if err != nil {
 			return false, fmt.Errorf("error reading str kv info: %s", err.Error())
 		}
-		val, n, err := readString2BLenUnsafe(buf, *idx)
+		val, n, err := readStr(buf, *idx)
 		*idx += n
 		if err != nil {
 			return false, fmt.Errorf("error reading str kv info: %s", err.Error())
