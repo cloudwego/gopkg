@@ -114,6 +114,40 @@ func TestOnRemoteClosed(t *testing.T) {
 	assert.Nil(t, conn.Close())
 }
 
+// TestOnRemoteClosedWithoutRead verifies that connection closure is detected
+// independently of application reads. Server handlers rely on this behavior
+// while they are blocked on work other than reading from the client.
+func TestOnRemoteClosedWithoutRead(t *testing.T) {
+	ln, err := net.Listen("tcp", "localhost:0")
+	assert.Nil(t, err)
+	defer ln.Close()
+
+	client, err := net.Dial("tcp", ln.Addr().String())
+	assert.Nil(t, err)
+	server, err := ln.Accept()
+	assert.Nil(t, err)
+
+	remoteClosed := make(chan struct{}, 1)
+	stater, err := ListenConnState(server, WithOnRemoteClosed(func() {
+		remoteClosed <- struct{}{}
+	}))
+	assert.Nil(t, err)
+
+	_, err = client.Write([]byte("unread data"))
+	assert.Nil(t, err)
+	assert.Nil(t, client.Close())
+
+	select {
+	case <-remoteClosed:
+	case <-time.After(2 * time.Second):
+		t.Fatal("OnRemoteClosed callback was not invoked without a connection read")
+	}
+
+	assert.Equal(t, StateRemoteClosed, stater.State())
+	assert.Nil(t, stater.Close())
+	assert.Nil(t, server.Close())
+}
+
 // TestOnRemoteClosed_NotCalled tests that the OnRemoteClosed callback
 // is NOT invoked when the connection is closed locally.
 func TestOnRemoteClosed_NotCalled(t *testing.T) {

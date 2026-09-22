@@ -10,7 +10,7 @@ jobs:
     strategy:
       matrix:
         go: [ "1.20", oldstable, stable ]
-        os: [ ubuntu-24.04-arm, ubuntu-latest ]
+        os: [ ubuntu-24.04-arm, ubuntu-latest, windows-latest ]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
