@@ -45,7 +45,8 @@ const (
 	RawRingHashKey
 	LBType
 	ClusterShardID
-	FrameType // ttheader streaming frame type
+	FrameType     // ttheader streaming frame type
+	StreamTimeout // ttheader streaming whole stream timeout with ms unit
 )
 
 // string keys of ttheader transport
