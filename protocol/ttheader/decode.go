@@ -66,6 +66,14 @@ func DecodeFromBytes(ctx context.Context, bs []byte) (param DecodeParam, err err
 
 // Decode decodes ttheader param from bufiox.Reader.
 func Decode(ctx context.Context, in bufiox.Reader) (param DecodeParam, err error) {
+	return DecodeInto(ctx, in, nil, nil)
+}
+
+func DecodeInto(ctx context.Context, in bufiox.Reader, intInfo map[uint16]string, strInfo map[string]string) (param DecodeParam, err error) {
+	return decodeInto(ctx, in, intInfo, strInfo, nil)
+}
+
+func decodeInto(ctx context.Context, in bufiox.Reader, intInfo map[uint16]string, strInfo map[string]string, sink HeaderSink) (param DecodeParam, err error) {
 	var headerMeta []byte
 	headerMeta, err = in.Next(TTHeaderMetaSize)
 	if err != nil {
@@ -110,7 +118,7 @@ func Decode(ctx context.Context, in bufiox.Reader) (param DecodeParam, err error
 		hdIdx++
 	}
 
-	param.IntInfo, param.StrInfo, err = readKVInfo(hdIdx, headerInfo)
+	param.IntInfo, param.StrInfo, err = readKVInfo(hdIdx, headerInfo, intInfo, strInfo, sink)
 	if err != nil {
 		err = fmt.Errorf("ttHeader read kv info failed, %s, headerInfo=%#x", err.Error(), headerInfo)
 		return
@@ -133,7 +141,8 @@ func IsTTHeader(flagBuf []byte) bool {
 	return binary.BigEndian.Uint32(flagBuf[Size32:])&MagicMask == TTHeaderMagic
 }
 
-func readKVInfo(idx int, buf []byte) (intKVMap map[uint16]string, strKVMap map[string]string, err error) {
+func readKVInfo(idx int, buf []byte, intInfo map[uint16]string, strInfo map[string]string, sink HeaderSink) (intKVMap map[uint16]string, strKVMap map[string]string, err error) {
+	intKVMap, strKVMap = intInfo, strInfo
 	for {
 		var infoID uint8
 		infoID, err = Bytes2Uint8(buf, idx)
@@ -149,26 +158,26 @@ func readKVInfo(idx int, buf []byte) (intKVMap map[uint16]string, strKVMap map[s
 		case InfoIDPadding:
 			continue
 		case InfoIDKeyValue:
-			if strKVMap == nil {
+			if strKVMap == nil && sink == nil {
 				strKVMap = make(map[string]string)
 			}
-			_, err = readStrKVInfo(&idx, buf, strKVMap)
+			_, err = readStrKVInfo(&idx, buf, strKVMap, sink)
 			if err != nil {
 				return
 			}
 		case InfoIDIntKeyValue:
-			if intKVMap == nil {
+			if intKVMap == nil && sink == nil {
 				intKVMap = make(map[uint16]string)
 			}
-			_, err = readIntKVInfo(&idx, buf, intKVMap)
+			_, err = readIntKVInfo(&idx, buf, intKVMap, sink)
 			if err != nil {
 				return
 			}
 		case InfoIDACLToken:
-			if strKVMap == nil {
+			if strKVMap == nil && sink == nil {
 				strKVMap = make(map[string]string)
 			}
-			if err = readACLToken(&idx, buf, strKVMap); err != nil {
+			if err = readACLToken(&idx, buf, strKVMap, sink); err != nil {
 				return
 			}
 		default:
@@ -178,7 +187,7 @@ func readKVInfo(idx int, buf []byte) (intKVMap map[uint16]string, strKVMap map[s
 	}
 }
 
-func readIntKVInfo(idx *int, buf []byte, info map[uint16]string) (has bool, err error) {
+func readIntKVInfo(idx *int, buf []byte, info map[uint16]string, sink HeaderSink) (has bool, err error) {
 	kvSize, err := Bytes2Uint16(buf, *idx)
 	*idx += 2
 	if err != nil {
@@ -198,12 +207,16 @@ func readIntKVInfo(idx *int, buf []byte, info map[uint16]string) (has bool, err 
 		if err != nil {
 			return false, fmt.Errorf("error reading int kv info: %s", err.Error())
 		}
-		info[key] = val
+		if sink == nil {
+			info[key] = val
+		} else {
+			sink.SetInt(key, val)
+		}
 	}
 	return true, nil
 }
 
-func readStrKVInfo(idx *int, buf []byte, info map[string]string) (has bool, err error) {
+func readStrKVInfo(idx *int, buf []byte, info map[string]string, sink HeaderSink) (has bool, err error) {
 	kvSize, err := Bytes2Uint16(buf, *idx)
 	*idx += 2
 	if err != nil {
@@ -223,19 +236,27 @@ func readStrKVInfo(idx *int, buf []byte, info map[string]string) (has bool, err 
 		if err != nil {
 			return false, fmt.Errorf("error reading str kv info: %s", err.Error())
 		}
-		info[key] = val
+		if sink == nil {
+			info[key] = val
+		} else {
+			sink.SetString(key, val)
+		}
 	}
 	return true, nil
 }
 
 // readACLToken reads acl token
-func readACLToken(idx *int, buf []byte, info map[string]string) error {
+func readACLToken(idx *int, buf []byte, info map[string]string, sink HeaderSink) error {
 	val, n, err := ReadString2BLen(buf, *idx)
 	*idx += n
 	if err != nil {
 		return fmt.Errorf("error reading acl token: %s", err.Error())
 	}
-	info[GDPRToken] = val
+	if sink == nil {
+		info[GDPRToken] = val
+	} else {
+		sink.SetString(GDPRToken, val)
+	}
 	return nil
 }
 
