@@ -31,29 +31,32 @@ func DecodeTo(ctx context.Context, in bufiox.Reader, sink HeaderSink) (DecodePar
 	if sink == nil {
 		return DecodeParam{}, fmt.Errorf("nil TTHeader sink")
 	}
-	return decodeInto(ctx, in, nil, nil, sink)
+	return decodeInto(ctx, in, nil, nil, sink, false)
 }
 
-func EncodeEntries(ctx context.Context, param EncodeParam, headers HeaderEntries, out bufiox.Writer) ([]byte, error) {
+func DecodeToOwned(ctx context.Context, in bufiox.Reader, sink HeaderSink) (DecodeParam, error) {
+	if sink == nil {
+		return DecodeParam{}, fmt.Errorf("nil TTHeader sink")
+	}
+	return decodeInto(ctx, in, nil, nil, sink, true)
+}
+
+func EncodedEntriesSize(headers HeaderEntries) (int, error) {
 	if headers.StringKind == headers.IntKind {
-		return nil, fmt.Errorf("identical TTHeader entry kinds")
+		return 0, fmt.Errorf("identical TTHeader entry kinds")
 	}
 	if headers.IntCount < 0 || headers.IntCount > math.MaxUint16 || headers.StrCount < 0 || headers.StrCount > math.MaxUint16 {
-		return nil, fmt.Errorf("invalid TTHeader entry counts[%d,%d]", headers.IntCount, headers.StrCount)
+		return 0, fmt.Errorf("invalid TTHeader entry counts[%d,%d]", headers.IntCount, headers.StrCount)
 	}
 	if headers.GDPRIndex != 0 {
 		if uint64(headers.GDPRIndex) > uint64(len(headers.Entries)) || headers.StrCount == 0 {
-			return nil, fmt.Errorf("invalid TTHeader GDPR index[%d]", headers.GDPRIndex)
+			return 0, fmt.Errorf("invalid TTHeader GDPR index[%d]", headers.GDPRIndex)
 		}
 		entry := headers.Entries[headers.GDPRIndex-1]
 		if entry.Op != 0 || entry.Kind != headers.StringKind || entry.Key != GDPRToken {
-			return nil, fmt.Errorf("invalid TTHeader GDPR entry[%d]", headers.GDPRIndex)
+			return 0, fmt.Errorf("invalid TTHeader GDPR entry[%d]", headers.GDPRIndex)
 		}
 	}
-	return encodeEntriesBlock(param, headers, out)
-}
-
-func encodeEntriesBlock(param EncodeParam, headers HeaderEntries, out bufiox.Writer) ([]byte, error) {
 	stringCount := headers.StrCount
 	size := 2
 	if headers.GDPRIndex != 0 {
@@ -70,24 +73,24 @@ func encodeEntriesBlock(param EncodeParam, headers HeaderEntries, out bufiox.Wri
 	for i := range headers.Entries {
 		entry := &headers.Entries[i]
 		if entry.Op > 1 || (entry.Kind != headers.StringKind && entry.Kind != headers.IntKind) {
-			return nil, fmt.Errorf("invalid TTHeader entry[%d] kind[%d] op[%d]", i, entry.Kind, entry.Op)
+			return 0, fmt.Errorf("invalid TTHeader entry[%d] kind[%d] op[%d]", i, entry.Kind, entry.Op)
 		}
 		if entry.Op == 1 {
 			continue
 		}
 		if len(entry.Value) > math.MaxUint16 {
-			return nil, fmt.Errorf("TTHeader entry[%d] value too long", i)
+			return 0, fmt.Errorf("TTHeader entry[%d] value too long", i)
 		}
 		if entry.Kind == headers.StringKind {
 			stringsWritten++
 			if entry.Key == GDPRToken {
 				if uint64(i)+1 != uint64(headers.GDPRIndex) {
-					return nil, fmt.Errorf("unindexed TTHeader GDPR entry[%d]", i)
+					return 0, fmt.Errorf("unindexed TTHeader GDPR entry[%d]", i)
 				}
 				continue
 			}
 			if len(entry.Key) > math.MaxUint16 {
-				return nil, fmt.Errorf("TTHeader entry[%d] key too long", i)
+				return 0, fmt.Errorf("TTHeader entry[%d] key too long", i)
 			}
 			size += 4 + len(entry.Key) + len(entry.Value)
 		} else {
@@ -96,14 +99,27 @@ func encodeEntriesBlock(param EncodeParam, headers HeaderEntries, out bufiox.Wri
 		}
 	}
 	if stringsWritten != headers.StrCount || intsWritten != headers.IntCount {
-		return nil, fmt.Errorf("TTHeader entry count mismatch[%d,%d/%d,%d]", stringsWritten, intsWritten, headers.StrCount, headers.IntCount)
+		return 0, fmt.Errorf("TTHeader entry count mismatch[%d,%d/%d,%d]", stringsWritten, intsWritten, headers.StrCount, headers.IntCount)
 	}
 	padding := (4 - size%4) % 4
 	size += padding
 	if size > int(MaxHeaderSize) {
-		return nil, fmt.Errorf("invalid header length[%d]", size)
+		return 0, fmt.Errorf("invalid header length[%d]", size)
 	}
-	buf, err := out.Malloc(TTHeaderMetaSize + size)
+	return TTHeaderMetaSize + size, nil
+}
+
+func EncodeEntries(ctx context.Context, param EncodeParam, headers HeaderEntries, out bufiox.Writer) ([]byte, error) {
+	length, err := EncodedEntriesSize(headers)
+	if err != nil {
+		return nil, err
+	}
+	stringCount := headers.StrCount
+	if headers.GDPRIndex != 0 {
+		stringCount--
+	}
+	size := length - TTHeaderMetaSize
+	buf, err := out.Malloc(length)
 	if err != nil {
 		return nil, fmt.Errorf("ttHeader malloc header meta failed, %s", err)
 	}

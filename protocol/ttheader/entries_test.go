@@ -199,6 +199,40 @@ func entriesTestEncode(t *testing.T, h HeaderEntries) []byte {
 	return buf
 }
 
+func TestEncodedEntriesSizeMatchesMapEncoder(t *testing.T) {
+	for count := 0; count <= 4; count++ {
+		for _, length := range []int{0, 1, 2, 3, 4, 127, 65535, 65536} {
+			for _, acl := range []bool{false, true} {
+				h := HeaderEntries{StringKind: 123, IntKind: 456}
+				param := EncodeParam{IntInfo: make(map[uint16]string), StrInfo: make(map[string]string)}
+				value := strings.Repeat("v", length)
+				for i := 0; i < count; i++ {
+					key := fmt.Sprintf("key-%d", i)
+					h.Entries = append(h.Entries, HeaderEntry{Kind: h.StringKind, Key: key, Value: value}, HeaderEntry{Kind: h.IntKind, ID: uint16(i), Value: value})
+					h.StrCount++
+					h.IntCount++
+					param.StrInfo[key], param.IntInfo[uint16(i)] = value, value
+				}
+				if acl {
+					h.Entries = append(h.Entries, HeaderEntry{Kind: h.StringKind, Key: GDPRToken, Value: value})
+					h.GDPRIndex = uint32(len(h.Entries))
+					h.StrCount++
+					param.StrInfo[GDPRToken] = value
+				}
+				h.Entries = append(h.Entries, HeaderEntry{Kind: h.StringKind, Key: "deleted", Value: strings.Repeat("x", 65536), Op: 1})
+				wire, wantErr := EncodeToBytes(context.Background(), param)
+				got, err := EncodedEntriesSize(h)
+				if (err == nil) != (wantErr == nil) {
+					t.Fatalf("count=%d length=%d acl=%v: size error=%v map error=%v", count, length, acl, err, wantErr)
+				}
+				if err == nil && (got != len(wire) || got != len(entriesTestEncode(t, h))) {
+					t.Fatalf("count=%d length=%d acl=%v: size=%d map bytes=%d", count, length, acl, got, len(wire))
+				}
+			}
+		}
+	}
+}
+
 func TestEncodeEntriesRoundTripSelectorsAndPadding(t *testing.T) {
 	h := HeaderEntries{StringKind: 123, IntKind: 456, StrCount: 3, IntCount: 2, GDPRIndex: 3,
 		Entries: []HeaderEntry{

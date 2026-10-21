@@ -57,6 +57,10 @@ func Bytes2Uint16(bytes []byte, off int) (uint16, error) {
 
 // ReadString2BLen ...
 func ReadString2BLen(bytes []byte, off int) (string, int, error) {
+	return readString2BLen(bytes, off, "")
+}
+
+func readString2BLen(bytes []byte, off int, storage string) (string, int, error) {
 	length, err := Bytes2Uint16(bytes, off)
 	strLen := int(length)
 	if err != nil {
@@ -65,6 +69,9 @@ func ReadString2BLen(bytes []byte, off int) (string, int, error) {
 	off += 2
 	if len(bytes)-off < strLen {
 		return "", 0, io.EOF
+	}
+	if storage != "" {
+		return storage[off : off+strLen], int(length) + 2, nil
 	}
 
 	buf := bytes[off : off+strLen]
