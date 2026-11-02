@@ -166,6 +166,10 @@ func EncodeToBytes(ctx context.Context, param EncodeParam) (buf []byte, err erro
 // And `totalLen` should be the length of header + payload - 4.
 // You may refer to unit tests for examples.
 func Encode(ctx context.Context, param EncodeParam, out bufiox.Writer) (totalLenField []byte, err error) {
+	return encode(ctx, param, out)
+}
+
+func encode(ctx context.Context, param EncodeParam, out bufiox.Writer) (totalLenField []byte, err error) {
 	// 1. header meta
 	var headerMeta []byte
 	headerMeta, err = out.Malloc(TTHeaderMetaSize)
@@ -197,6 +201,16 @@ func Encode(ctx context.Context, param EncodeParam, out bufiox.Writer) (totalLen
 	if err != nil {
 		return nil, fmt.Errorf("ttHeader write kv info failed, %s", err.Error())
 	}
+
+	padding := (4 - headerInfoSize%4) % 4
+	paddingBuf, err := out.Malloc(padding)
+	if err != nil {
+		return nil, fmt.Errorf("ttHeader write kv info failed, %s", err.Error())
+	}
+	for i := range paddingBuf {
+		paddingBuf[i] = 0
+	}
+	headerInfoSize += padding
 
 	if uint32(headerInfoSize) > MaxHeaderSize {
 		return nil, fmt.Errorf("invalid header length[%d]", headerInfoSize)
@@ -273,16 +287,5 @@ func writeKVInfo(writtenSize int, intKVMap map[uint16]string, strKVMap map[strin
 			writeSize = writeSize + 2 + valWLen
 		}
 	}
-
-	// padding = (4 - headerInfoSize%4) % 4
-	padding := (4 - writeSize%4) % 4
-	paddingBuf, err := out.Malloc(padding)
-	if err != nil {
-		return writeSize, err
-	}
-	for i := 0; i < len(paddingBuf); i++ {
-		paddingBuf[i] = byte(0)
-	}
-	writeSize += padding
 	return
 }
